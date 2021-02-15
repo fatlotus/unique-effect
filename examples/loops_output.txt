@@ -1,0 +1,9 @@
+In loop! message=ni! okay im done
+In loop! message=ni! ni! okay im done
+In loop! message=ni! ni! ni! okay im done
+In loop! message=ni! ni! ni! ni! okay im done
+In loop! message=ni! ni! ni! ni! ni! okay im done
+In loop! message=ni! ni! ni! ni! ni! ni! okay im done
+In loop! message=ni! ni! ni! ni! ni! ni! ni! okay im done
+sleeping (7 outstanding timer[s])...done
+After loop, message=ni! ni! ni! ni! ni! ni! ni! okay im done

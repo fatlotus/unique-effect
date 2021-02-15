@@ -1,0 +1,12 @@
+import stdlib
+
+func main(clock: Clock, console: Stream): (Clock, Stream) {
+	sleep(&clock) // same as "let clock = sleep(clock)"
+	sleep(&clock)
+
+	// Even though the sleep calls appear earlier in the source, the print
+	// will happen while the sleeps are blocked.
+	print(&console, "Hello, world")
+
+    return (clock, console)
+}

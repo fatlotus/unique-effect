@@ -1,0 +1,18 @@
+import stdlib
+
+func barrier(clock: Clock, console: Stream): (Clock, Stream) {
+  return (clock, console)
+}
+
+func main(clock: Clock, console: Stream): (Clock, Stream) {
+	sleep(&clock)
+	sleep(&clock)
+	
+	// Unlike hello.ht, the barrier function "entangles" the clock and console
+	// together, enforcing an ordering constraint.
+	barrier(&clock, &console)
+
+	print(&console, "after barrier")
+
+    return (clock, console)
+}

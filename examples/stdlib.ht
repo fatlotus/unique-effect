@@ -1,0 +1,16 @@
+// Write the given message to this stream, appending a newline.
+sync native func print(console: Stream, arg: &String): Stream
+
+// Wait for 100ms on the given clock.
+native func sleep(clock: Clock): Clock
+
+// Helpers for test code (eventually these will be deleted once the stdlib is
+// more full featured).
+sync native func ReadLine(console: Stream): (Stream, String)
+sync native func isShort(a: &String): Boolean
+sync native func itoa(x: Integer): String
+sync native func concat(a: &String, b: &String): String
+
+// Parallel programming support. See loops.ht for an example of how this works.
+sync native func fork(clock: Clock): (Clock, Clock)
+sync native func join(a: Clock, b: Clock): Clock

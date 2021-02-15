@@ -1,0 +1,14 @@
+import stdlib
+
+func main(clock: Clock, console: Stream): (Clock, Stream) {
+    let name = ReadLine(&console)
+
+    if isShort(name) {
+        print(&console, concat("Name is short, ", name))
+    } else {
+        print(&console, concat("Name is long: ", name))
+    }
+
+    print(&console, "After if statement")
+    return (clock, console)
+}

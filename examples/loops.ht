@@ -1,0 +1,45 @@
+import stdlib
+
+func main(clock: Clock, console: Stream): (Clock, Stream) {
+	let message = "okay im done"
+	let collector = fork(&clock) // "let clock, collector = fork(clock)"
+
+	while isShort(message) {
+		// Always fork() from clock, then dump the clock that has been slept
+		// on into the collector. That way, each iteration through the loop
+		// has a fresh clock, and so can sleep() in parallel.
+		//
+		// Here is how this works (F = fork(), J = join(), S = sleep()).
+		//
+		// Iteration     pre  0   1   2   3   4   5   post
+		// 
+		//   clock ----->F--->F-->F-->F-->F-->F-->F---+
+		//               |    |   |   |   |   |   |   |
+		//               |    v   v   v   v   v   v   |
+		//               |    S   S   S   S   S   S   |
+		//               |    |   |   |   |   |   |   |
+		//               |    v   v   v   v   v   v   v
+		//   collector   +--->J-->J-->J-->J-->J-->J---J--> clock
+		//
+		// The one liner is also equivalent to the following:
+		//
+		//    let clock, thisIteration = fork(clock)
+		//    let finishedSleep = sleep(thisIteration)
+		//    let collector = join(collector, finishedSleep)
+		//
+		join(&collector, sleep(fork(&clock)))
+
+		let message = concat("ni! ", message)
+		print(&console, concat("In loop! message=", message))
+	}
+
+	join(&clock, collector)
+
+	while false {
+		print(&console, "Never executed")
+	}
+
+	print(&console, concat("After loop, message=", message))
+
+    return (clock, console)
+}
