@@ -1,4 +1,18 @@
-package hang10
+// Copyright 2021 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package unique_effect
 
 import (
 	"fmt"
@@ -116,16 +130,16 @@ func (g *generator) DeleteUnreferenced() {
 
 func (g generator) TypeDefinition(w io.Writer) {
 	if g.IsNative {
-		fmt.Fprintf(w, "void hang10_%s();\n", g.Name)
+		fmt.Fprintf(w, "void unique_effect_%s();\n", g.Name)
 		return
 	}
-	fmt.Fprintf(w, "struct hang10_%s_state {\n", g.Name)
+	fmt.Fprintf(w, "struct unique_effect_%s_state {\n", g.Name)
 	fmt.Fprintf(w, "  future_t r[%d];\n", len(g.Registers))
 	fmt.Fprintf(w, "  future_t *result[%d];\n", g.Results)
 	fmt.Fprintf(w, "  closure_t caller;\n")
 	fmt.Fprintf(w, "  bool conditions[%d];\n", len(g.Conditions))
 	for index, kind := range g.ChildCalls {
-		fmt.Fprintf(w, "  struct hang10_%s_state *call_%d;\n", kind, index)
+		fmt.Fprintf(w, "  struct unique_effect_%s_state *call_%d;\n", kind, index)
 		fmt.Fprintf(w, "  bool call_%d_done;\n", index)
 	}
 	fmt.Fprintf(w, "};\n")
@@ -194,7 +208,7 @@ func (g *generator) FormatInto(w io.Writer) {
 }
 
 func (g generator) Header() string {
-	return fmt.Sprintf("void hang10_%s(struct hang10_runtime *rt, struct hang10_%s_state *sp)", g.Name, g.Name)
+	return fmt.Sprintf("void unique_effect_%s(struct unique_effect_runtime *rt, struct unique_effect_%s_state *sp)", g.Name, g.Name)
 }
 
 func (g *generator) NewClosure(p *program, argNames []string, argKinds []*Kind, results []*Kind) *generator {

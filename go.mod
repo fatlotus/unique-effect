@@ -1,4 +1,4 @@
-module github.com/fatlotus/hang10
+module github.com/fatlotus/unique_effect
 
 go 1.15
 

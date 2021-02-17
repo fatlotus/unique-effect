@@ -1,4 +1,18 @@
-package hang10
+// Copyright 2021 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package unique_effect
 
 import (
 	"fmt"
@@ -41,7 +55,7 @@ type genIntegerLiteral struct {
 }
 
 func (g *genIntegerLiteral) Generate(gen *generator) string {
-	return fmt.Sprintf("    %s = (future_t){.value = (void*)(uintptr_t)%d, .ready = true};\n", gen.Reg(g.Target), g.Value)
+	return fmt.Sprintf("    %s = (future_t){.value = (void*)(intptr_t)%d, .ready = true};\n", gen.Reg(g.Target), g.Value)
 }
 
 func (g *genIntegerLiteral) Deps() ([]register, []register) {
@@ -62,7 +76,7 @@ func (g *genCallSyncFunction) Generate(gen *generator) string {
 	for _, ret := range g.Result {
 		cArgs = append(cArgs, fmt.Sprintf("&%s.value", gen.Reg(ret)))
 	}
-	result := fmt.Sprintf("    hang10_%s(%s);\n", g.Name, strings.Join(cArgs, ", "))
+	result := fmt.Sprintf("    unique_effect_%s(%s);\n", g.Name, strings.Join(cArgs, ", "))
 	for _, ret := range g.Result {
 		result += fmt.Sprintf("    %s.ready = true;\n", gen.Reg(ret))
 	}
@@ -83,7 +97,7 @@ type genCallAsyncFunction struct {
 func (g *genCallAsyncFunction) Generate(gen *generator) string {
 	var result strings.Builder
 	fmt.Fprintf(&result, "    if (sp->call_%d == NULL) {\n", g.ChildCall)
-	fmt.Fprintf(&result, "      sp->call_%d = malloc(sizeof(struct hang10_%s_state));\n",
+	fmt.Fprintf(&result, "      sp->call_%d = malloc(sizeof(struct unique_effect_%s_state));\n",
 		g.ChildCall, g.Name)
 
 	for i, arg := range g.Args {
@@ -93,10 +107,10 @@ func (g *genCallAsyncFunction) Generate(gen *generator) string {
 		fmt.Fprintf(&result, "      sp->call_%d->result[%d] = &%s;\n", g.ChildCall, i, gen.Reg(ret))
 	}
 
-	fmt.Fprintf(&result, "      sp->call_%d->caller.func = &hang10_%s;\n", g.ChildCall, gen.Name)
+	fmt.Fprintf(&result, "      sp->call_%d->caller.func = &unique_effect_%s;\n", g.ChildCall, gen.Name)
 	fmt.Fprintf(&result, "      sp->call_%d->caller.state = sp;\n", g.ChildCall)
 	fmt.Fprintf(&result, "      sp->call_%d->conditions[0] = false;\n", g.ChildCall)
-	fmt.Fprintf(&result, "      hang10_runtime_schedule(rt, (closure_t){.state = sp->call_%d, .func = &hang10_%s});\n", g.ChildCall, g.Name)
+	fmt.Fprintf(&result, "      unique_effect_runtime_schedule(rt, (closure_t){.state = sp->call_%d, .func = &unique_effect_%s});\n", g.ChildCall, g.Name)
 	fmt.Fprintf(&result, "    }\n")
 	return result.String()
 }
@@ -114,7 +128,7 @@ func (g *genRestartLoop) Generate(gen *generator) string {
 	var result strings.Builder
 	fmt.Fprintf(&result, "    if (!sp->call_%d_done) {\n", g.ChildCall)
 	fmt.Fprintf(&result, "      if (sp->call_%d == NULL) {\n", g.ChildCall)
-	fmt.Fprintf(&result, "        sp->call_%d = malloc(sizeof(struct hang10_%s_state));\n",
+	fmt.Fprintf(&result, "        sp->call_%d = malloc(sizeof(struct unique_effect_%s_state));\n",
 		g.ChildCall, gen.Name)
 	for i := range gen.ReturnKind {
 		fmt.Fprintf(&result, "        sp->call_%d->result[%d] = sp->result[%d];\n", g.ChildCall, i, i)
@@ -133,7 +147,7 @@ func (g *genRestartLoop) Generate(gen *generator) string {
 	}
 	fmt.Fprintf(&result, "      if (%s) { sp->call_%d_done = true; }\n", strings.Join(cArgs, " && "), g.ChildCall)
 
-	fmt.Fprintf(&result, "      hang10_runtime_schedule(rt, (closure_t){.state = sp->call_%d, .func = &hang10_%s});\n", g.ChildCall, gen.Name)
+	fmt.Fprintf(&result, "      unique_effect_runtime_schedule(rt, (closure_t){.state = sp->call_%d, .func = &unique_effect_%s});\n", g.ChildCall, gen.Name)
 	fmt.Fprintf(&result, "    };\n")
 	// for _, arg := range g.Args {
 	// 	fmt.Fprintf(&result, "    if (!%s.ready) return;\n", gen.Reg(arg))
@@ -168,7 +182,7 @@ func (g *genReturn) Generate(gen *generator) string {
 	for i, reg := range g.ReturnValue {
 		fmt.Fprintf(&b, "    *sp->result[%d] = %s;\n", i, gen.Reg(reg))
 	}
-	fmt.Fprintf(&b, "    hang10_runtime_schedule(rt, sp->caller);\n")
+	fmt.Fprintf(&b, "    unique_effect_runtime_schedule(rt, sp->caller);\n")
 	fmt.Fprintf(&b, "    free(sp);\n")
 	fmt.Fprintf(&b, "    return;\n")
 	return b.String()

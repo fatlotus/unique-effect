@@ -1,5 +1,22 @@
+/*
+ * Copyright 2021 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +28,7 @@
 static void *kSingletonConsole = (void *)40;
 static void *kSingletonClock = (void *)50;
 
-void hang10_runtime_schedule(struct hang10_runtime *rt, closure_t closure) {
+void unique_effect_runtime_schedule(struct unique_effect_runtime *rt, closure_t closure) {
   assert(closure.func != NULL);
   assert(rt->next_call < 100);
 
@@ -28,13 +45,13 @@ void hang10_runtime_schedule(struct hang10_runtime *rt, closure_t closure) {
   rt->next_call++;
 }
 
-void hang10_print(val_t console, val_t msg, val_t *console_out) {
+void unique_effect_print(val_t console, val_t msg, val_t *console_out) {
   assert(console == kSingletonConsole);
   printf("%s\n", (char *)msg);
   *console_out = console;
 }
 
-void hang10_sleep(struct hang10_runtime *rt, struct hang10_sleep_state *state) {
+void unique_effect_sleep(struct unique_effect_runtime *rt, struct unique_effect_sleep_state *state) {
   assert(rt->next_delay < 20);
   assert(state->r[0].value == kSingletonClock);
 
@@ -44,18 +61,18 @@ void hang10_sleep(struct hang10_runtime *rt, struct hang10_sleep_state *state) {
   free(state);
 }
 
-void hang10_ReadLine(val_t console, val_t *console_out, val_t *name_out) {
+void unique_effect_ReadLine(val_t console, val_t *console_out, val_t *name_out) {
   assert(console == kSingletonConsole);
   *name_out = "World";
   *console_out = console;
 }
 
-void hang10_itoa(val_t int_val, val_t *string_out) {
+void unique_effect_itoa(val_t int_val, val_t *string_out) {
   *string_out = malloc(32);
-  snprintf(*string_out, 31, "%lu", (uintptr_t)int_val);
+  snprintf(*string_out, 31, "%lu", (intptr_t)int_val);
 }
 
-void hang10_concat(val_t a, val_t b, val_t *result) {
+void unique_effect_concat(val_t a, val_t b, val_t *result) {
   size_t la = strlen(a), lb = strlen(b);
   char *buf = malloc(la + lb + 1);
   memcpy(&buf[0], a, la);
@@ -64,39 +81,39 @@ void hang10_concat(val_t a, val_t b, val_t *result) {
   *result = buf;
 }
 
-static void hang10_exit(struct hang10_runtime *rt, void *state) { exit(0); }
+static void unique_effect_exit(struct unique_effect_runtime *rt, void *state) { exit(0); }
 
-void hang10_isShort(val_t message, val_t *result) {
+void unique_effect_isShort(val_t message, val_t *result) {
   *result = strlen((char *)message) < 40 ? (void *)true : (void *)false;
 }
 
-void hang10_fork(val_t parent, val_t *a_out, val_t *b_out) {
+void unique_effect_fork(val_t parent, val_t *a_out, val_t *b_out) {
   assert(parent == kSingletonClock);
   *a_out = parent;
   *b_out = parent;
 }
 
-void hang10_join(val_t a, val_t b, val_t *result) {
+void unique_effect_join(val_t a, val_t b, val_t *result) {
   assert(a == kSingletonClock);
   assert(b == kSingletonClock);
   *result = a;
 }
 
 int main(int argc, const char *argv[]) {
-  struct hang10_runtime rt;
+  struct unique_effect_runtime rt;
   rt.next_call = 0;
   rt.next_delay = 0;
 
-  struct hang10_main_state *st = malloc(sizeof(struct hang10_main_state));
+  struct unique_effect_main_state *st = malloc(sizeof(struct unique_effect_main_state));
   st->r[0].value = kSingletonClock;
   st->r[0].ready = true;
   st->r[1].value = kSingletonConsole;
   st->r[1].ready = true;
   st->result[0] = &st->r[0];
   st->result[1] = &st->r[1];
-  st->caller = (closure_t){.state = NULL, .func = &hang10_exit};
+  st->caller = (closure_t){.state = NULL, .func = &unique_effect_exit};
 
-  hang10_runtime_schedule(&rt, (closure_t){.state = st, .func = &hang10_main});
+  unique_effect_runtime_schedule(&rt, (closure_t){.state = st, .func = &unique_effect_main});
 
   int i = 0;
   while (true) {
@@ -111,7 +128,7 @@ int main(int argc, const char *argv[]) {
       usleep(100000);
       fprintf(stdout, "done\n");
       for (int i = 0; i < rt.next_delay; i++) {
-        hang10_runtime_schedule(&rt, rt.after_delay[i]);
+        unique_effect_runtime_schedule(&rt, rt.after_delay[i]);
       }
       rt.next_delay = 0;
     } else {
