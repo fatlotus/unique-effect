@@ -197,33 +197,17 @@ func (a *astMethodArg) Generate(p *program, b *generator) (reg register, borrow 
 	return
 }
 
-func (a *astExpression) Captures(out map[string]bool) {
-	a.Base.Captures(out)
-	for _, call := range a.Calls {
-		for _, arg := range call.Args {
-			arg.Captures(out)
-		}
-	}
-}
-
-func (a *astExpression) Generate(p *program, b *generator) ([]register, error) {
-	if len(a.Calls) == 0 {
-		return a.Base.Generate(p, b)
-	}
-
-	if a.Base.Variable == nil || len(a.Calls) > 1 {
-		return []register{}, fmt.Errorf("calls of non-immediate functions are unimplemented")
-	}
-	callee, ok := p.Functions[*a.Base.Variable]
+func buildMethodCall(p *program, b *generator, calleeName string, args []*astMethodArg) ([]register, error) {
+	callee, ok := p.Functions[calleeName]
 	if !ok {
-		return []register{}, fmt.Errorf("no function %s", *a.Base.Variable)
+		return []register{}, fmt.Errorf("no function %s", calleeName)
 	}
 
 	kinds := []Kind{}
 	registers := []register{}
 	borrows := []string{}
 
-	for i, arg := range a.Calls[0].Args {
+	for i, arg := range args {
 		reg, borrow, err := arg.Generate(p, b)
 		if err != nil {
 			return nil, err
@@ -264,7 +248,6 @@ func (a *astExpression) Generate(p *program, b *generator) ([]register, error) {
 		results = append(results, b.NewReg(kind, callee.IsSynchronous))
 	}
 
-	calleeName := *a.Base.Variable
 	if callee.IsSynchronous {
 		b.Stmt(&genCallSyncFunction{calleeName, registers, results})
 	} else {
@@ -281,6 +264,51 @@ func (a *astExpression) Generate(p *program, b *generator) ([]register, error) {
 	}
 
 	return actualResults, nil
+}
+
+func (a *astExpression) Captures(out map[string]bool) {
+	a.Call.Captures(out)
+	for _, term := range a.Terms {
+		term.Operand.Captures(out)
+	}
+}
+
+func (a *astExpression) Generate(p *program, b *generator) ([]register, error) {
+	call := a.Call
+	for _, term := range a.Terms {
+		c := "concat"
+		call = &astExpressionCall{
+			Base: &astExpressionBase{Variable: &c},
+			Calls: []*astMethodCall{{
+				Args: []*astMethodArg{
+					{Expr: &astExpression{Call: call}},
+					{Expr: &astExpression{Call: term.Operand}},
+				},
+			}},
+		}
+	}
+	return call.Generate(p, b)
+}
+
+func (a *astExpressionCall) Captures(out map[string]bool) {
+	a.Base.Captures(out)
+	for _, call := range a.Calls {
+		for _, arg := range call.Args {
+			arg.Captures(out)
+		}
+	}
+}
+
+func (a *astExpressionCall) Generate(p *program, b *generator) ([]register, error) {
+	if len(a.Calls) == 0 {
+		return a.Base.Generate(p, b)
+	}
+
+	if a.Base.Variable == nil || len(a.Calls) > 1 {
+		return []register{}, fmt.Errorf("calls of non-immediate functions are unimplemented")
+	}
+
+	return buildMethodCall(p, b, *a.Base.Variable, a.Calls[0].Args)
 }
 
 func (a *astLetStmt) Captures(out map[string]bool) {

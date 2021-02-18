@@ -33,8 +33,8 @@ func main(clock: Clock, console: Stream): (Clock, Stream) {
 		//
 		join(&collector, sleep(fork(&clock)))
 
-		set message = concat("ni! ", message)
-		print(&console, concat("In loop! message=", message))
+		set message = "ni! " + message
+		print(&console, "In loop! message=" + message)
 	}
 
 	join(&clock, collector)
@@ -43,7 +43,7 @@ func main(clock: Clock, console: Stream): (Clock, Stream) {
 		print(&console, "Never executed")
 	}
 
-	print(&console, concat("After loop, message=", message))
+	print(&console, "After loop, message=" + message)
 
 	return (clock, console)
 }

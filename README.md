@@ -7,7 +7,7 @@ Features of UniqueEffect:
  *  Pure functional semantics:
  
     	let a = "Hello"
-    	let b = concat(a, "World")
+    	let b = a + " World"
 
  *  Uniquely typed variables:
  

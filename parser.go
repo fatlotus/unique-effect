@@ -185,6 +185,15 @@ type astMethodArg struct {
 }
 
 type astExpression struct {
+	Call  *astExpressionCall `@@`
+	Terms []*astTerm         `@@*`
+}
+
+type astTerm struct {
+	Operand *astExpressionCall `"+" @@*`
+}
+
+type astExpressionCall struct {
 	Base  *astExpressionBase `@@`
 	Calls []*astMethodCall   `@@*`
 }
@@ -240,6 +249,9 @@ func Parse(main string, sources map[string]string) (map[string]string, error) {
 			}
 
 			for _, fun := range t.Functions {
+				if _, ok := program.Functions[fun.Name]; ok {
+					return nil, fmt.Errorf("function already exists: %s", fun.Name)
+				}
 				program.Functions[fun.Name] = fun
 			}
 		}
