@@ -1,7 +1,7 @@
 import stdlib
 
 func barrier(clock: Clock, console: Stream): (Clock, Stream) {
-  return (clock, console)
+	return (clock, console)
 }
 
 func main(clock: Clock, console: Stream): (Clock, Stream) {
@@ -14,5 +14,5 @@ func main(clock: Clock, console: Stream): (Clock, Stream) {
 
 	print(&console, "after barrier")
 
-    return (clock, console)
+	return (clock, console)
 }

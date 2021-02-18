@@ -28,7 +28,8 @@
 static void *kSingletonConsole = (void *)40;
 static void *kSingletonClock = (void *)50;
 
-void unique_effect_runtime_schedule(struct unique_effect_runtime *rt, closure_t closure) {
+void unique_effect_runtime_schedule(struct unique_effect_runtime *rt,
+                                    closure_t closure) {
   assert(closure.func != NULL);
   assert(rt->next_call < 100);
 
@@ -51,7 +52,8 @@ void unique_effect_print(val_t console, val_t msg, val_t *console_out) {
   *console_out = console;
 }
 
-void unique_effect_sleep(struct unique_effect_runtime *rt, struct unique_effect_sleep_state *state) {
+void unique_effect_sleep(struct unique_effect_runtime *rt,
+                         struct unique_effect_sleep_state *state) {
   assert(rt->next_delay < 20);
   assert(state->r[0].value == kSingletonClock);
 
@@ -61,9 +63,10 @@ void unique_effect_sleep(struct unique_effect_runtime *rt, struct unique_effect_
   free(state);
 }
 
-void unique_effect_ReadLine(val_t console, val_t *console_out, val_t *name_out) {
+void unique_effect_ReadLine(val_t console, val_t *console_out,
+                            val_t *name_out) {
   assert(console == kSingletonConsole);
-  *name_out = "World";
+  *name_out = strdup("World");
   *console_out = console;
 }
 
@@ -81,7 +84,9 @@ void unique_effect_concat(val_t a, val_t b, val_t *result) {
   *result = buf;
 }
 
-static void unique_effect_exit(struct unique_effect_runtime *rt, void *state) { exit(0); }
+static void unique_effect_exit(struct unique_effect_runtime *rt, void *state) {
+  exit(0);
+}
 
 void unique_effect_isShort(val_t message, val_t *result) {
   *result = strlen((char *)message) < 40 ? (void *)true : (void *)false;
@@ -99,12 +104,15 @@ void unique_effect_join(val_t a, val_t b, val_t *result) {
   *result = a;
 }
 
+void unique_effect_copy(val_t a, val_t *result) { *result = strdup(a); }
+
 int main(int argc, const char *argv[]) {
   struct unique_effect_runtime rt;
   rt.next_call = 0;
   rt.next_delay = 0;
 
-  struct unique_effect_main_state *st = malloc(sizeof(struct unique_effect_main_state));
+  struct unique_effect_main_state *st =
+      malloc(sizeof(struct unique_effect_main_state));
   st->r[0].value = kSingletonClock;
   st->r[0].ready = true;
   st->r[1].value = kSingletonConsole;
@@ -113,7 +121,8 @@ int main(int argc, const char *argv[]) {
   st->result[1] = &st->r[1];
   st->caller = (closure_t){.state = NULL, .func = &unique_effect_exit};
 
-  unique_effect_runtime_schedule(&rt, (closure_t){.state = st, .func = &unique_effect_main});
+  unique_effect_runtime_schedule(
+      &rt, (closure_t){.state = st, .func = &unique_effect_main});
 
   int i = 0;
   while (true) {

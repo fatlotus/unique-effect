@@ -112,20 +112,24 @@ func (g *generator) CopyOfLocals() map[string]register {
 	return result
 }
 
-func (g *generator) DeleteUnreferenced() {
-	referenced := map[register]bool{}
-	for _, reg := range g.Locals {
-		referenced[reg] = true
+func (g *generator) GarbageRegisters(keep []register) (map[register]*Kind, error) {
+	keepMap := map[register]bool{}
+	for _, reg := range keep {
+		keepMap[g.ResolveRegister(reg)] = true
 	}
+
+	garbage := map[register]*Kind{}
 	for index, kind := range g.Registers {
-		reg := register(index)
-		if kind != nil && !referenced[reg] {
-			if !kind.Borrowed && kind.Family == FamilyString {
-				g.Stmt(&genFree{reg})
-				g.Registers[reg] = nil
+		reg := g.ResolveRegister(register(index))
+		if kind != nil && !keepMap[reg] && !kind.Borrowed {
+			if kind.Family == FamilyString {
+				garbage[reg] = kind
+			} else if kind.Family != FamilyBoolean && kind.Family != FamilyInteger {
+				return nil, fmt.Errorf("unused value of type %s (r%d)", kind, reg)
 			}
 		}
 	}
+	return garbage, nil
 }
 
 func (g generator) TypeDefinition(w io.Writer) {
@@ -147,7 +151,7 @@ func (g generator) TypeDefinition(w io.Writer) {
 }
 
 func (g *generator) DumpRegisters(w io.Writer) {
-	fmt.Fprintf(w, "  printf(\"%s %%p ready=", g.Name)
+	fmt.Fprintf(w, "  fprintf(stderr, \"%s %%p ready=", g.Name)
 	for range g.Registers {
 		fmt.Fprintf(w, "%%s")
 	}

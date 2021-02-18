@@ -44,6 +44,8 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 	parentCondition := b.CurrentCondition
 	trueCondition := b.NewCondition()
 	falseCondition := b.NewCondition()
+	registers := make([]*Kind, len(b.Registers))
+	copy(registers, b.Registers)
 
 	b.Stmt(&genBranch{cond[0], trueCondition, falseCondition})
 
@@ -56,6 +58,7 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 
 	localsAfterTrue := b.Locals
 	b.Locals = localsBeforeTrue
+	copy(b.Registers[:len(registers)], registers)
 	localsBeforeFalse := b.CopyOfLocals()
 
 	b.CurrentCondition = falseCondition
@@ -76,6 +79,10 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 		regFalse, ok := localsAfterFalse[name]
 		if !ok {
 			return errors.New("local var from false is missing")
+		}
+
+		if err := b.Registers[regTrue].IsEquivalent(*b.Registers[regFalse]); err != nil {
+			return fmt.Errorf("%s has unequal types on both sides of if-statement: %w", err)
 		}
 
 		// If the variable is used on one side and not the other, make sure
@@ -216,14 +223,31 @@ func (a *astExpression) Generate(p *program, b *generator) ([]register, error) {
 	registers := []register{}
 	borrows := []string{}
 
-	for _, arg := range a.Calls[0].Args {
+	for i, arg := range a.Calls[0].Args {
 		reg, borrow, err := arg.Generate(p, b)
 		if err != nil {
 			return nil, err
 		}
+
 		registers = append(registers, reg)
 		kinds = append(kinds, *b.Registers[reg])
 		borrows = append(borrows, borrow)
+
+		// Clear out all registers/local variables that were moved into this
+		// function.
+		if !callee.Args[i].Kind.Borrowed {
+			for idx := range b.Registers {
+				if r := register(idx); b.ResolveRegister(r) == reg {
+					b.Registers[r] = nil
+				}
+			}
+
+			for lcl, target := range b.Locals {
+				if b.ResolveRegister(target) == reg {
+					delete(b.Locals, lcl)
+				}
+			}
+		}
 	}
 
 	resultKinds, err := callee.ReturnValue(kinds)
@@ -298,7 +322,12 @@ func (a *astReturnStmt) Generate(p *program, g *generator) error {
 		}
 	}
 
-	g.Stmt(&genReturn{regs})
+	garbage, err := g.GarbageRegisters(regs)
+	if err != nil {
+		return err
+	}
+
+	g.Stmt(&genReturn{regs, garbage})
 	return nil
 }
 
@@ -313,7 +342,6 @@ func (a *astBlock) Generate(p *program, g *generator) error {
 		if err := stmt.Generate(p, g); err != nil {
 			return fmt.Errorf("%s: %w", stmt.Pos, err)
 		}
-		g.DeleteUnreferenced()
 	}
 	return nil
 }
@@ -403,17 +431,25 @@ func (a *astRepeatStmt) Generate(p *program, g *generator) error {
 		exitCondition := closure.NewCondition()
 
 		returnVariables := []register{}
-		for _, lcl := range names {
+		for i, lcl := range names {
 			reg, ok := closure.Locals[lcl]
 			if !ok {
 				return fmt.Errorf("captured variable lost during loop: %s", lcl)
 			}
+			if err := closure.Registers[reg].IsEquivalent(*kinds[i]); err != nil {
+				return fmt.Errorf("%s changed type during loop: %w", kinds[i], err)
+			}
 			returnVariables = append(returnVariables, reg)
 		}
 
+		garbage, err := closure.GarbageRegisters(returnVariables)
+		if err != nil {
+			return err
+		}
+
 		closure.StmtWithCond(0, &genBranch{cond[0], continueCondition, exitCondition})
-		closure.StmtWithCond(continueCondition, &genRestartLoop{returnVariables, childCall})
-		closure.StmtWithCond(exitCondition, &genReturn{returnVariables})
+		closure.StmtWithCond(continueCondition, &genRestartLoop{returnVariables, childCall, garbage})
+		closure.StmtWithCond(exitCondition, &genReturn{returnVariables, garbage})
 
 		closureName = closure.Name
 	}
@@ -433,8 +469,16 @@ func (a *astRepeatStmt) Generate(p *program, g *generator) error {
 	g.StmtWithCond(startCondition, &genCallAsyncFunction{closureName, registers, resultRegisters, g.NewChildCall(closureName)})
 
 	for i, name := range names {
-		g.StmtWithCond(skipCondition, &genRenameRegister{g.Locals[name], resultRegisters[i]})
-		g.Locals[name] = resultRegisters[i]
+		before := g.Locals[name]
+		after := resultRegisters[i]
+
+		if err := g.Registers[before].IsEquivalent(*g.Registers[after]); err != nil {
+			return fmt.Errorf("%s changed type during loop: %w", err)
+		}
+
+		g.Registers[before] = nil
+		g.StmtWithCond(skipCondition, &genRenameRegister{before, after})
+		g.Locals[name] = after
 	}
 
 	return nil

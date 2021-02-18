@@ -1,7 +1,11 @@
 import stdlib
 
 func main(clock: Clock, console: Stream): (Clock, Stream) {
-	let message = "okay im done"
+	// Duplicate the borrowed &String literal to get an owned String object.
+	// Otherwise, the variable might or might not be owned by the end of
+	// the loop.
+	let message = copy("okay im done")
+
 	let collector = fork(&clock) // "let clock, collector = fork(clock)"
 
 	while isShort(message) {
@@ -41,5 +45,5 @@ func main(clock: Clock, console: Stream): (Clock, Stream) {
 
 	print(&console, concat("After loop, message=", message))
 
-    return (clock, console)
+	return (clock, console)
 }

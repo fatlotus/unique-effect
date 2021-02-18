@@ -8,5 +8,5 @@ func main(clock: Clock, console: Stream): (Clock, Stream) {
 	// will happen while the sleeps are blocked.
 	print(&console, "Hello, world")
 
-    return (clock, console)
+	return (clock, console)
 }

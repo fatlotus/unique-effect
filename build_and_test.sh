@@ -14,7 +14,7 @@
 # limitations under the License.
 
 
-set -e
+set -euo pipefail
 
 mkdir -p gen/binaries/ gen/sources/ gen/outputs/
 
@@ -38,7 +38,7 @@ for filename in examples/*.ht; do
     gen/builtins.c \
     "gen/sources/${module}.c" \
      -DGENERATED_MODULE_HEADER="\"sources/${module}.h\""
-  ASAN_OPTIONS=detect_leaks=0 "gen/binaries/${module}" \
+  "gen/binaries/${module}" \
     | tee "gen/outputs/${module}.txt"
   diff -U 3 "gen/outputs/${module}.txt" "examples/${module}_output.txt"
 done

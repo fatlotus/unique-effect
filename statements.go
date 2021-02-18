@@ -16,12 +16,19 @@ package unique_effect
 
 import (
 	"fmt"
+	"io"
 	"strings"
 )
 
 type generatedStatement interface {
 	Generate(block *generator) string
 	Deps() ([]register, []register)
+}
+
+func freeGarbage(gen *generator, garbage map[register]*Kind, w io.Writer) {
+	for reg, kind := range garbage {
+		fmt.Fprintf(w, "        if (%[1]s.ready) free(%[1]s.value); // %[2]s\n", gen.Reg(reg), kind)
+	}
 }
 
 type genRenameRegister struct {
@@ -122,6 +129,7 @@ func (g *genCallAsyncFunction) Deps() ([]register, []register) {
 type genRestartLoop struct {
 	Args      []register
 	ChildCall childCall
+	Garbage   map[register]*Kind
 }
 
 func (g *genRestartLoop) Generate(gen *generator) string {
@@ -141,19 +149,20 @@ func (g *genRestartLoop) Generate(gen *generator) string {
 	for i, arg := range g.Args {
 		fmt.Fprintf(&result, "      sp->call_%d->r[%d] = %s;\n", g.ChildCall, i, gen.Reg(arg))
 	}
+
+	fmt.Fprintf(&result, "      unique_effect_runtime_schedule(rt, (closure_t){.state = sp->call_%d, .func = &unique_effect_%s});\n", g.ChildCall, gen.Name)
+
 	cArgs := []string{}
 	for _, arg := range g.Args {
 		cArgs = append(cArgs, fmt.Sprintf("%s.ready", gen.Reg(arg)))
 	}
-	fmt.Fprintf(&result, "      if (%s) { sp->call_%d_done = true; }\n", strings.Join(cArgs, " && "), g.ChildCall)
+	fmt.Fprintf(&result, "      if (%s) {\n", strings.Join(cArgs, " && "))
+	fmt.Fprintf(&result, "        sp->call_%d_done = true;\n", g.ChildCall)
 
-	fmt.Fprintf(&result, "      unique_effect_runtime_schedule(rt, (closure_t){.state = sp->call_%d, .func = &unique_effect_%s});\n", g.ChildCall, gen.Name)
+	freeGarbage(gen, g.Garbage, &result)
+
+	fmt.Fprintf(&result, "      }\n")
 	fmt.Fprintf(&result, "    };\n")
-	// for _, arg := range g.Args {
-	// 	fmt.Fprintf(&result, "    if (!%s.ready) return;\n", gen.Reg(arg))
-	// }
-	// fmt.Fprintf(&result, "    free(sp);\n")
-	// fmt.Fprintf(&result, "    return;\n")
 	return result.String()
 }
 
@@ -175,6 +184,7 @@ func (g *genComment) Deps() ([]register, []register) {
 
 type genReturn struct {
 	ReturnValue []register
+	Garbage     map[register]*Kind
 }
 
 func (g *genReturn) Generate(gen *generator) string {
@@ -183,6 +193,9 @@ func (g *genReturn) Generate(gen *generator) string {
 		fmt.Fprintf(&b, "    *sp->result[%d] = %s;\n", i, gen.Reg(reg))
 	}
 	fmt.Fprintf(&b, "    unique_effect_runtime_schedule(rt, sp->caller);\n")
+
+	freeGarbage(gen, g.Garbage, &b)
+
 	fmt.Fprintf(&b, "    free(sp);\n")
 	fmt.Fprintf(&b, "    return;\n")
 	return b.String()
@@ -210,17 +223,4 @@ func (g *genBranch) Generate(gen *generator) string {
 
 func (g *genBranch) Deps() ([]register, []register) {
 	return []register{g.Condition}, nil
-}
-
-type genFree struct {
-	Register register
-}
-
-func (g *genFree) Generate(gen *generator) string {
-	return fmt.Sprintf("    fprintf(stderr, \"free(%s)\\n\");\n", gen.Reg(g.Register))
-	// return "" // fmt.Sprintf("    free(%s.value); %s.ready = false;\n", gen.Reg(g.Register), gen.Reg(g.Register))
-}
-
-func (g *genFree) Deps() ([]register, []register) {
-	return []register{g.Register}, nil
 }

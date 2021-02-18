@@ -94,6 +94,13 @@ func (k Kind) CanConvertTo(other Kind) error {
 	return nil
 }
 
+func (k Kind) IsEquivalent(other Kind) error {
+	if k.Family != other.Family || k.Borrowed != other.Borrowed {
+		return fmt.Errorf("%v vs. %v", other, k)
+	}
+	return nil
+}
+
 type astHangTen struct {
 	Imports   []*astImport   `@@*`
 	Functions []*astFunction `@@*`
