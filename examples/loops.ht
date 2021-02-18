@@ -33,7 +33,7 @@ func main(clock: Clock, console: Stream): (Clock, Stream) {
 		//
 		join(&collector, sleep(fork(&clock)))
 
-		let message = concat("ni! ", message)
+		set message = concat("ni! ", message)
 		print(&console, concat("In loop! message=", message))
 	}
 

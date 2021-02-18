@@ -22,7 +22,7 @@ Features of UniqueEffect:
  *  Side effects are tracked using unique objects. (To print to the console, use
     the `Stream` called "`stdout`")
  
-    	let stdout = print(stdout, b) // or: "print(&stdout, b)"
+    	set stdout = print(stdout, b) // or: "print(&stdout, b)"
 
  *  When they do not use the same variables, operations occur in parallel.
 

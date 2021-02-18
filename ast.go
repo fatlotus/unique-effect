@@ -288,6 +288,16 @@ func (a *astLetStmt) Captures(out map[string]bool) {
 }
 
 func (a *astLetStmt) Generate(p *program, b *generator) error {
+	for _, name := range a.VarNames {
+		if _, ok := b.Locals[name]; ok != a.MustExist {
+			if a.MustExist {
+				return fmt.Errorf("Variable %s does not exist", name)
+			} else {
+				return fmt.Errorf("Variable %s already exists", name)
+			}
+		}
+	}
+
 	regs, err := a.Value.Generate(p, b)
 	if err != nil {
 		return err

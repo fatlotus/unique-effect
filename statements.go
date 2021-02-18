@@ -49,7 +49,7 @@ type genStringLiteral struct {
 }
 
 func (g *genStringLiteral) Generate(gen *generator) string {
-	return fmt.Sprintf("    %s = (future_t){.value = %s, .ready = true};\n", gen.Reg(g.Target), g.Value)
+	return fmt.Sprintf("    %s = (future_t){.value = %#v, .ready = true};\n", gen.Reg(g.Target), g.Value)
 }
 
 func (g *genStringLiteral) Deps() ([]register, []register) {

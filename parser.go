@@ -20,6 +20,7 @@ import (
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
+	"github.com/alecthomas/participle/v2/lexer/stateful"
 )
 
 type Family int
@@ -102,12 +103,12 @@ func (k Kind) IsEquivalent(other Kind) error {
 }
 
 type astHangTen struct {
-	Imports   []*astImport   `@@*`
-	Functions []*astFunction `@@*`
+	Imports   []*astImport   `EOL* @@*`
+	Functions []*astFunction `     @@*`
 }
 
 type astImport struct {
-	ModuleName string `"import" @Ident`
+	ModuleName string `"import" @Ident EOL+`
 }
 
 type astFunction struct {
@@ -116,7 +117,7 @@ type astFunction struct {
 	Name          string    `'func' @Ident`
 	Args          []*astArg `'(' @@* (',' @@*)* ')'`
 	ReturnKind    []*Kind   `":" (@@ | "(" @@ ("," @@)* ")")`
-	Block         *astBlock `@@?`
+	Block         *astBlock `@@? EOL+`
 }
 
 func (a *astFunction) ReturnValue(args []Kind) ([]*Kind, error) {
@@ -139,23 +140,24 @@ type astArg struct {
 }
 
 type astBlock struct {
-	Statements []*astStmt `'{' @@* '}'`
+	Statements []*astStmt `'{' EOL* @@* '}'`
 }
 
 type astStmt struct {
-	Let      *astLetStmt         `@@`
+	Let      *astLetStmt         `( @@`
 	Return   *astReturnStmt      `| @@`
 	Cond     *astConditionalStmt `| @@`
 	Repeat   *astRepeatStmt      `| @@`
-	BareExpr *astExpression      `| @@`
+	BareExpr *astExpression      `| @@ ) EOL+`
 
 	Pos    lexer.Position
 	EndPos lexer.Position
 }
 
 type astLetStmt struct {
-	VarNames []string       `"let" @Ident ("," @Ident)*`
-	Value    *astExpression `"=" @@`
+	MustExist bool           `("let" | @"set")`
+	VarNames  []string       `@Ident ("," @Ident)*`
+	Value     *astExpression `"=" @@`
 }
 
 type astReturnStmt struct {
@@ -199,7 +201,20 @@ type program struct {
 	GeneratedFunctions []*generator
 }
 
-var parser = participle.MustBuild(&astHangTen{})
+var ufLexer = stateful.MustSimple([]stateful.Rule{
+	{`Ident`, `[a-zA-Z][a-zA-Z_\d]*`, nil},
+	{`String`, `"(?:\\.|[^"])*"`, nil},
+	{`Int`, `\d+`, nil},
+	{`EOL`, `[\r\n]`, nil},
+	{"comment", `//[^\n]*`, nil},
+	{"Punct", `[-[!@#$%^&*()+_={}\|:;"'<,>.?/]|]`, nil},
+	{"whitespace", `[ \t]`, nil},
+})
+
+var parser = participle.MustBuild(
+	&astHangTen{},
+	participle.Lexer(ufLexer),
+	participle.Unquote("String"))
 
 func Parse(main string, sources map[string]string) (map[string]string, error) {
 	program := &program{map[string]*astFunction{}, []*generator{}}
