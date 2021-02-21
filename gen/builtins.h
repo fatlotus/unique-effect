@@ -37,6 +37,7 @@ struct unique_effect_runtime {
   int next_call;
   int current_call;
   closure_t after_delay[20];
+  future_t* after_delay_futures[20];
   int next_delay;
 };
 

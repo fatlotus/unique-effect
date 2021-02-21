@@ -3,7 +3,7 @@ import stdlib
 func main(clock: Clock, console: Stream): (Clock, Stream) {
 	let name = ReadLine(&console)
 
-	if isShort(name) {
+	if len(name) < 40 {
 		print(&console, "Name is short, " + name)
 	} else {
 		print(&console, "Name is long: " + name)

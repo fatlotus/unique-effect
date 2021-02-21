@@ -8,7 +8,7 @@ func main(clock: Clock, console: Stream): (Clock, Stream) {
 
 	let collector = fork(&clock) // "let clock, collector = fork(clock)"
 
-	while isShort(message) {
+	while len(message) < 40 {
 		// Always fork() from clock, then dump the clock that has been slept
 		// on into the collector. That way, each iteration through the loop
 		// has a fresh clock, and so can sleep() in parallel.

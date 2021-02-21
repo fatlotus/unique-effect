@@ -7,7 +7,7 @@ native func sleep(clock: Clock): Clock
 // Helpers for test code (eventually these will be deleted once the stdlib is
 // more full featured).
 sync native func ReadLine(console: Stream): (Stream, String)
-sync native func isShort(a: &String): Boolean
+sync native func len(a: &String): Integer
 sync native func itoa(x: Integer): String
 sync native func concat(a: &String, b: &String): String
 sync native func copy(a: &String): String

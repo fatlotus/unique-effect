@@ -57,9 +57,11 @@ void unique_effect_sleep(struct unique_effect_runtime *rt,
   assert(rt->next_delay < 20);
   assert(state->r[0].value == kSingletonClock);
 
-  *state->result[0] = state->r[0];
+  // We set ->ready = true after the sleep finishes.
+  state->result[0]->value = kSingletonClock;
 
-  rt->after_delay[rt->next_delay++] = state->caller;
+  rt->after_delay[rt->next_delay] = state->caller;
+  rt->after_delay_futures[rt->next_delay++] = state->result[0];
   free(state);
 }
 
@@ -85,11 +87,13 @@ void unique_effect_concat(val_t a, val_t b, val_t *result) {
 }
 
 static void unique_effect_exit(struct unique_effect_runtime *rt, void *state) {
+  assert(rt->next_delay == 0);
+  assert(rt->next_call == rt->current_call + 1);
   exit(0);
 }
 
-void unique_effect_isShort(val_t message, val_t *result) {
-  *result = strlen((char *)message) < 40 ? (void *)true : (void *)false;
+void unique_effect_len(val_t message, val_t* result) {
+    *result = (void*)(intptr_t)strlen((char *)message);
 }
 
 void unique_effect_fork(val_t parent, val_t *a_out, val_t *b_out) {
@@ -138,6 +142,7 @@ int main(int argc, const char *argv[]) {
       fprintf(stdout, "done\n");
       for (int i = 0; i < rt.next_delay; i++) {
         unique_effect_runtime_schedule(&rt, rt.after_delay[i]);
+        rt.after_delay_futures[i]->ready = true;
       }
       rt.next_delay = 0;
     } else {

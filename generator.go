@@ -151,14 +151,27 @@ func (g generator) TypeDefinition(w io.Writer) {
 }
 
 func (g *generator) DumpRegisters(w io.Writer) {
-	fmt.Fprintf(w, "  fprintf(stderr, \"%s %%p ready=", g.Name)
+	fmt.Fprintf(w, "  fprintf(stderr, \"%15s %%p ready=", g.Name)
+	for range g.Conditions {
+		fmt.Fprintf(w, "%%s")
+	}
 	for range g.Registers {
 		fmt.Fprintf(w, "%%s")
 	}
 	fmt.Fprintf(w, "\\n\", sp")
 
+	for i := range g.Conditions {
+		fmt.Fprintf(w, ", (sp->conditions[%[1]d] ? \"cond%[1]d \" : \"\")", i)
+	}
+
 	for i := range g.Registers {
-		fmt.Fprintf(w, ", (%s.ready ? \"r%d \" : \"\")", g.Reg(register(i)), i)
+		localName := ""
+		for lcl, reg := range g.Locals {
+			if reg == register(i) {
+				localName = "(" + lcl + ")"
+			}
+		}
+		fmt.Fprintf(w, ", (%s.ready ? \"r%d%s \" : \"\")", g.Reg(register(i)), i, localName)
 	}
 	fmt.Fprintf(w, ");\n")
 }

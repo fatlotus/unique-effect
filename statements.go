@@ -196,6 +196,7 @@ func (g *genReturn) Generate(gen *generator) string {
 
 	freeGarbage(gen, g.Garbage, &b)
 
+	// gen.DumpRegisters(&b)
 	fmt.Fprintf(&b, "    free(sp);\n")
 	fmt.Fprintf(&b, "    return;\n")
 	return b.String()
@@ -223,4 +224,22 @@ func (g *genBranch) Generate(gen *generator) string {
 
 func (g *genBranch) Deps() ([]register, []register) {
 	return []register{g.Condition}, nil
+}
+
+type genIntegerComparison struct {
+	Operation string
+	Left      register
+	Right     register
+	Result    register
+}
+
+func (g *genIntegerComparison) Generate(gen *generator) string {
+	b := strings.Builder{}
+	fmt.Fprintf(&b, "    %s.value = %s.value %s %s.value ? (void *)1 : (void *)0;\n", gen.Reg(g.Result), gen.Reg(g.Left), g.Operation, gen.Reg(g.Right))
+	fmt.Fprintf(&b, "    %s.ready = true;\n", gen.Reg(g.Result))
+	return b.String()
+}
+
+func (g *genIntegerComparison) Deps() ([]register, []register) {
+	return []register{g.Left, g.Right}, []register{g.Result}
 }

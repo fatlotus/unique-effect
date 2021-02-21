@@ -180,17 +180,28 @@ type astMethodCall struct {
 }
 
 type astMethodArg struct {
-	Borrow *string        `"&" @Ident`
+	Borrow *string        `  "&" @Ident`
 	Expr   *astExpression `| @@`
 }
 
 type astExpression struct {
+	Sum        *astExpressionSum `@@`
+	Comparison *astComparison    `@@?`
+}
+
+type astComparison struct {
+	Cond    string            `@(">=" | "<=" | "<" | ">")`
+	Operand *astExpressionSum `@@`
+}
+
+type astExpressionSum struct {
 	Call  *astExpressionCall `@@`
 	Terms []*astTerm         `@@*`
 }
 
 type astTerm struct {
-	Operand *astExpressionCall `"+" @@*`
+	Op      string             `@"+"`
+	Operand *astExpressionCall `@@`
 }
 
 type astExpressionCall struct {

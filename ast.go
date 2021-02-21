@@ -267,13 +267,52 @@ func buildMethodCall(p *program, b *generator, calleeName string, args []*astMet
 }
 
 func (a *astExpression) Captures(out map[string]bool) {
+	a.Sum.Captures(out)
+	if a.Comparison != nil {
+		a.Comparison.Operand.Captures(out)
+	}
+}
+
+func (a *astExpression) Generate(p *program, b *generator) ([]register, error) {
+	if a.Comparison == nil {
+		return a.Sum.Generate(p, b)
+	}
+
+	lhs, err := a.Sum.Generate(p, b)
+	if err != nil {
+		return nil, err
+	}
+	if len(lhs) != 1 {
+		return nil, fmt.Errorf("expecting single valued lhs %v", lhs)
+	}
+	if err := b.Registers[lhs[0]].CanConvertTo(Kind{true, FamilyInteger, nil}); err != nil {
+		return nil, err
+	}
+
+	rhs, err := a.Comparison.Operand.Generate(p, b)
+	if err != nil {
+		return nil, err
+	}
+	if len(rhs) != 1 {
+		return nil, fmt.Errorf("expecting single valued rhs %v", rhs)
+	}
+	if err := b.Registers[rhs[0]].CanConvertTo(Kind{true, FamilyInteger, nil}); err != nil {
+		return nil, err
+	}
+
+	result := b.NewReg(&Kind{false, FamilyBoolean, nil}, true)
+	b.Stmt(&genIntegerComparison{Operation: a.Comparison.Cond, Left: lhs[0], Right: rhs[0], Result: result})
+	return []register{result}, nil
+}
+
+func (a *astExpressionSum) Captures(out map[string]bool) {
 	a.Call.Captures(out)
 	for _, term := range a.Terms {
 		term.Operand.Captures(out)
 	}
 }
 
-func (a *astExpression) Generate(p *program, b *generator) ([]register, error) {
+func (a *astExpressionSum) Generate(p *program, b *generator) ([]register, error) {
 	call := a.Call
 	for _, term := range a.Terms {
 		c := "concat"
@@ -281,8 +320,8 @@ func (a *astExpression) Generate(p *program, b *generator) ([]register, error) {
 			Base: &astExpressionBase{Variable: &c},
 			Calls: []*astMethodCall{{
 				Args: []*astMethodArg{
-					{Expr: &astExpression{Call: call}},
-					{Expr: &astExpression{Call: term.Operand}},
+					{Expr: &astExpression{Sum: &astExpressionSum{Call: call}}},
+					{Expr: &astExpression{Sum: &astExpressionSum{Call: term.Operand}}},
 				},
 			}},
 		}
