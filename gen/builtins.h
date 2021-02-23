@@ -39,6 +39,7 @@ struct unique_effect_runtime {
   closure_t after_delay[20];
   future_t* after_delay_futures[20];
   int next_delay;
+  bool called_exit;
 };
 
 struct unique_effect_sleep_state {

@@ -89,7 +89,7 @@ void unique_effect_concat(val_t a, val_t b, val_t *result) {
 static void unique_effect_exit(struct unique_effect_runtime *rt, void *state) {
   assert(rt->next_delay == 0);
   assert(rt->next_call == rt->current_call + 1);
-  exit(0);
+  rt->called_exit = true;
 }
 
 void unique_effect_len(val_t message, val_t* result) {
@@ -150,6 +150,6 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  fprintf(stderr, "** finished without calling exit **\n");
-  return 1;
+  assert(rt.called_exit);
+  return 0;
 }

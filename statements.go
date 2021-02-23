@@ -160,7 +160,8 @@ func (g *genRestartLoop) Generate(gen *generator) string {
 	fmt.Fprintf(&result, "        sp->call_%d_done = true;\n", g.ChildCall)
 
 	freeGarbage(gen, g.Garbage, &result)
-
+	fmt.Fprintf(&result, "        free(sp);\n")
+	fmt.Fprintf(&result, "        return;\n")
 	fmt.Fprintf(&result, "      }\n")
 	fmt.Fprintf(&result, "    };\n")
 	return result.String()
