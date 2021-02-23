@@ -23,10 +23,9 @@
 #include <unistd.h>
 
 #include "builtins.h"
-#include GENERATED_MODULE_HEADER
 
-static void *kSingletonConsole = (void *)40;
-static void *kSingletonClock = (void *)50;
+val_t kSingletonConsole = (void *)40;
+val_t kSingletonClock = (void *)50;
 
 void unique_effect_runtime_schedule(struct unique_effect_runtime *rt,
                                     closure_t closure) {
@@ -86,14 +85,14 @@ void unique_effect_concat(val_t a, val_t b, val_t *result) {
   *result = buf;
 }
 
-static void unique_effect_exit(struct unique_effect_runtime *rt, void *state) {
+void unique_effect_exit(struct unique_effect_runtime *rt, void *state) {
   assert(rt->next_delay == 0);
   assert(rt->next_call == rt->current_call + 1);
   rt->called_exit = true;
 }
 
-void unique_effect_len(val_t message, val_t* result) {
-    *result = (void*)(intptr_t)strlen((char *)message);
+void unique_effect_len(val_t message, val_t *result) {
+  *result = (void *)(intptr_t)strlen((char *)message);
 }
 
 void unique_effect_fork(val_t parent, val_t *a_out, val_t *b_out) {
@@ -110,46 +109,32 @@ void unique_effect_join(val_t a, val_t b, val_t *result) {
 
 void unique_effect_copy(val_t a, val_t *result) { *result = strdup(a); }
 
-int main(int argc, const char *argv[]) {
-  struct unique_effect_runtime rt;
-  rt.next_call = 0;
-  rt.next_delay = 0;
+void unique_effect_runtime_init(struct unique_effect_runtime *rt) {
+  rt->next_call = 0;
+  rt->next_delay = 0;
+  rt->current_call = 0;
+}
 
-  struct unique_effect_main_state *st =
-      malloc(sizeof(struct unique_effect_main_state));
-  st->r[0].value = kSingletonClock;
-  st->r[0].ready = true;
-  st->r[1].value = kSingletonConsole;
-  st->r[1].ready = true;
-  st->result[0] = &st->r[0];
-  st->result[1] = &st->r[1];
-  st->caller = (closure_t){.state = NULL, .func = &unique_effect_exit};
-
-  unique_effect_runtime_schedule(
-      &rt, (closure_t){.state = st, .func = &unique_effect_main});
-
-  int i = 0;
+void unique_effect_runtime_loop(struct unique_effect_runtime *rt) {
   while (true) {
-    for (; i < rt.next_call; i++) {
-      // printf("-- thunk %d --\n", i);
-      rt.current_call = i;
-      rt.upcoming_calls[i].func(&rt, rt.upcoming_calls[i].state);
+    for (; rt->current_call < rt->next_call; rt->current_call++) {
+      rt->upcoming_calls[rt->current_call].func(
+          rt, rt->upcoming_calls[rt->current_call].state);
     }
-    if (rt.next_delay > 0) {
-      fprintf(stdout, "sleeping (%d outstanding timer[s])...", rt.next_delay);
+    if (rt->next_delay > 0) {
+      fprintf(stdout, "sleeping (%d outstanding timer[s])...", rt->next_delay);
       fflush(stdout);
       usleep(100000);
       fprintf(stdout, "done\n");
-      for (int i = 0; i < rt.next_delay; i++) {
-        unique_effect_runtime_schedule(&rt, rt.after_delay[i]);
-        rt.after_delay_futures[i]->ready = true;
+      for (int i = 0; i < rt->next_delay; i++) {
+        unique_effect_runtime_schedule(rt, rt->after_delay[i]);
+        rt->after_delay_futures[i]->ready = true;
       }
-      rt.next_delay = 0;
+      rt->next_delay = 0;
     } else {
       break;
     }
   }
 
-  assert(rt.called_exit);
-  return 0;
+  assert(rt->called_exit);
 }

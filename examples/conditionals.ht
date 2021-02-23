@@ -1,6 +1,6 @@
 import stdlib
 
-func main(clock: Clock, console: Stream): (Clock, Stream) {
+func main(console: Stream): Stream {
 	let name = ReadLine(&console)
 
 	if len(name) < 40 {
@@ -10,5 +10,5 @@ func main(clock: Clock, console: Stream): (Clock, Stream) {
 	}
 
 	print(&console, "After if statement")
-	return (clock, console)
+	return console
 }

@@ -37,7 +37,7 @@ struct unique_effect_runtime {
   int next_call;
   int current_call;
   closure_t after_delay[20];
-  future_t* after_delay_futures[20];
+  future_t *after_delay_futures[20];
   int next_delay;
   bool called_exit;
 };
@@ -49,6 +49,13 @@ struct unique_effect_sleep_state {
   bool conditions[1]; // needed for calling convention
 };
 
-void unique_effect_runtime_schedule(struct unique_effect_runtime *rt, closure_t closure);
+extern val_t kSingletonConsole;
+extern val_t kSingletonClock;
+
+void unique_effect_runtime_init(struct unique_effect_runtime *rt);
+void unique_effect_runtime_schedule(struct unique_effect_runtime *rt,
+                                    closure_t closure);
+void unique_effect_runtime_loop(struct unique_effect_runtime *rt);
+void unique_effect_exit(struct unique_effect_runtime *rt, void *state);
 
 #endif

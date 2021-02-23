@@ -298,6 +298,11 @@ func Parse(main string, sources map[string]string) (map[string]string, error) {
 	fmt.Fprintf(&result, "#include <stdint.h>\n")
 	for _, defin := range program.GeneratedFunctions {
 		defin.FormatInto(&result)
+		if defin.Name == "main" {
+			if err := defin.FormatMainInto(&result); err != nil {
+				return nil, err
+			}
+		}
 	}
 	outputFiles[fmt.Sprintf("%s.c", main)] = result.String()
 	return outputFiles, nil

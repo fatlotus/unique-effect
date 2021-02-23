@@ -34,10 +34,8 @@ for filename in examples/*.ht; do
   module="$(basename "${filename}" .ht)"
 
   unique_effect "${module}"
-  clang -g -o "gen/binaries/${module}" -fsanitize=address \
-    gen/builtins.c \
-    "gen/sources/${module}.c" \
-     -DGENERATED_MODULE_HEADER="\"sources/${module}.h\""
+  clang -Wall -Wpedantic -g -o "gen/binaries/${module}" -fsanitize=address \
+    gen/builtins.c "gen/sources/${module}.c"
   "gen/binaries/${module}" \
     | tee "gen/outputs/${module}.txt"
   diff -U 3 "gen/outputs/${module}.txt" "examples/${module}_output.txt"

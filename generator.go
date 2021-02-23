@@ -31,6 +31,7 @@ type generator struct {
 	Results       int
 	Registers     []*Kind
 	IsNative      bool
+	ArgKinds      []*Kind
 	ReturnKind    []*Kind
 	Substitutions map[register]register
 	ChildCalls    []string
@@ -45,6 +46,7 @@ func newGenerator(name string, program *program, argNames []string, argKinds []*
 	function.Name = name
 	function.Substitutions = map[register]register{}
 	function.Locals = map[string]register{}
+	function.ArgKinds = argKinds
 	function.ReturnKind = results
 	function.Results = len(results)
 
@@ -222,6 +224,40 @@ func (g *generator) FormatInto(w io.Writer) {
 	// g.DumpRegisters(w)
 
 	fmt.Fprintf(w, "}\n")
+}
+
+func (g *generator) FormatMainInto(w io.Writer) error {
+	fmt.Fprintf(w, "int main(int argc, const char* argv[]) {\n")
+	fmt.Fprintf(w, "  struct unique_effect_runtime rt;\n")
+	fmt.Fprintf(w, "  unique_effect_runtime_init(&rt);\n")
+	fmt.Fprintf(w, "  struct unique_effect_%[1]s_state *st = malloc(sizeof(struct unique_effect_%[1]s_state));\n", g.Name)
+
+	for i, kind := range g.ArgKinds {
+		if kind.Family == FamilyClock {
+			fmt.Fprintf(w, "  st->r[%d].value = kSingletonClock;\n", i)
+			fmt.Fprintf(w, "  st->r[%d].ready = true;\n", i)
+		} else if kind.Family == FamilyStream {
+			fmt.Fprintf(w, "  st->r[%d].value = kSingletonConsole;\n", i)
+			fmt.Fprintf(w, "  st->r[%d].ready = true;\n", i)
+		} else {
+			return fmt.Errorf("not sure how to synthesize a %s", *kind)
+		}
+	}
+
+	for i, kind := range g.ReturnKind {
+		if kind.Family == FamilyClock || kind.Family == FamilyStream {
+			fmt.Fprintf(w, "  future_t dropped_result_%d;\n", i)
+			fmt.Fprintf(w, "  st->result[%[1]d] = &dropped_result_%[1]d;\n", i)
+		} else {
+			return fmt.Errorf("not sure how to consume a %s", *kind)
+		}
+	}
+
+	fmt.Fprintf(w, "  st->caller = (closure_t){.state = NULL, .func = &unique_effect_exit};\n")
+	fmt.Fprintf(w, "  unique_effect_runtime_schedule(&rt, (closure_t){.state = st, .func = &unique_effect_%s});\n", g.Name)
+	fmt.Fprintf(w, "  unique_effect_runtime_loop(&rt);\n")
+	fmt.Fprintf(w, "}\n")
+	return nil
 }
 
 func (g generator) Header() string {
