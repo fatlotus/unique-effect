@@ -26,19 +26,26 @@ errcheck -exclude errcheck_exclude.txt ./...
 go get github.com/gordonklaus/ineffassign
 ineffassign ./...
 
-for filename in examples/*.ht; do
-  if [[ "${filename}" == "examples/stdlib.ht" ]]; then
+for features in '' '-DUSE_LIBUV -luv'; do
+  if ! clang -o gen/binaries/detect gen/feature_detect.c ${features}; then
+    echo "Skipping feature ${features}"
     continue
   fi
 
-  module="$(basename "${filename}" .ht)"
+  for filename in examples/*.ht; do
+    if [[ "${filename}" == "examples/stdlib.ht" ]]; then
+      continue
+    fi
 
-  unique_effect "${module}"
-  clang -Wall -Wpedantic -g -o "gen/binaries/${module}" -fsanitize=address \
-    gen/builtins.c "gen/sources/${module}.c"
-  "gen/binaries/${module}" \
-    | tee "gen/outputs/${module}.txt"
-  diff -U 3 "gen/outputs/${module}.txt" "examples/${module}_output.txt"
+    module="$(basename "${filename}" .ht)"
+
+    unique_effect "${module}"
+    clang -Wall -Wpedantic -g -o "gen/binaries/${module}" -fsanitize=address \
+      gen/builtins.c "gen/sources/${module}.c" ${features}
+    "gen/binaries/${module}" \
+      | tee "gen/outputs/${module}.txt"
+    diff -U 3 "gen/outputs/${module}.txt" "examples/${module}_output.txt"
+  done
 done
 
 echo -e "\033[1;32mOK\033[0m"

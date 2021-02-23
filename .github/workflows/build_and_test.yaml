@@ -34,3 +34,9 @@ jobs:
 
     - name: Run build and test
       run: ./build_and_test.sh
+
+    - name: Install libuv
+      run: sudo apt-get install libuv1 libuv1-dev
+
+    - name: Run build and test (now with libuv)
+      run: ./build_and_test.sh

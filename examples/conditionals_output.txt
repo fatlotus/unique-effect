@@ -1,2 +1,3 @@
-Name is short, World
-After if statement
+0.0s Name is short, World
+0.0s After if statement
+finished after 0.0s

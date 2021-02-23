@@ -1,3 +1,2 @@
-Hello, world
-sleeping (1 outstanding timer[s])...done
-sleeping (1 outstanding timer[s])...done
+0.0s Hello, world
+finished after 2.0s

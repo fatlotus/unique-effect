@@ -1,3 +1,2 @@
-sleeping (1 outstanding timer[s])...done
-sleeping (1 outstanding timer[s])...done
-after barrier
+2.0s after barrier
+finished after 2.0s

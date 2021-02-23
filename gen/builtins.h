@@ -36,10 +36,14 @@ struct unique_effect_runtime {
   closure_t upcoming_calls[100];
   int next_call;
   int current_call;
+
+  // Compatibility mode (in case libuv is unavailable).
   closure_t after_delay[20];
   future_t *after_delay_futures[20];
   int next_delay;
+
   bool called_exit;
+  double current_time;
 };
 
 struct unique_effect_sleep_state {

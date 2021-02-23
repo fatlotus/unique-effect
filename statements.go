@@ -76,7 +76,7 @@ type genCallSyncFunction struct {
 }
 
 func (g *genCallSyncFunction) Generate(gen *generator) string {
-	cArgs := []string{}
+	cArgs := []string{"rt"}
 	for _, arg := range g.Args {
 		cArgs = append(cArgs, fmt.Sprintf("%s.value", gen.Reg(arg)))
 	}

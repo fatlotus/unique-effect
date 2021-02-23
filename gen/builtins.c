@@ -22,6 +22,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifdef USE_LIBUV
+#include <uv.h>
+#endif
+
 #include "builtins.h"
 
 val_t kSingletonConsole = (void *)40;
@@ -45,11 +49,43 @@ void unique_effect_runtime_schedule(struct unique_effect_runtime *rt,
   rt->next_call++;
 }
 
-void unique_effect_print(val_t console, val_t msg, val_t *console_out) {
+void unique_effect_print(struct unique_effect_runtime *rt, val_t console,
+                         val_t msg, val_t *console_out) {
   assert(console == kSingletonConsole);
-  printf("%s\n", (char *)msg);
+  printf("%0.1fs %s\n", rt->current_time, (char *)msg);
   *console_out = console;
 }
+
+static void finish_current_iteration(struct unique_effect_runtime *rt) {
+  for (; rt->current_call < rt->next_call; rt->current_call++) {
+    rt->upcoming_calls[rt->current_call].func(
+        rt, rt->upcoming_calls[rt->current_call].state);
+  }
+}
+
+#ifdef USE_LIBUV
+struct sleep_uv_adapter {
+  struct unique_effect_runtime *runtime;
+  struct unique_effect_sleep_state *call_state;
+  uv_timer_t timer;
+  double trigger_time;
+};
+
+static void sleep_adapter_result(uv_timer_t *timer) {
+  struct sleep_uv_adapter *adapter = (struct sleep_uv_adapter *)timer->data;
+  struct unique_effect_runtime *runtime = adapter->runtime;
+
+  runtime->current_time = adapter->trigger_time;
+  adapter->call_state->result[0]->ready = true;
+
+  unique_effect_runtime_schedule(runtime, adapter->call_state->caller);
+
+  free(adapter->call_state);
+  free(adapter);
+
+  finish_current_iteration(runtime);
+}
+#endif
 
 void unique_effect_sleep(struct unique_effect_runtime *rt,
                          struct unique_effect_sleep_state *state) {
@@ -59,24 +95,37 @@ void unique_effect_sleep(struct unique_effect_runtime *rt,
   // We set ->ready = true after the sleep finishes.
   state->result[0]->value = kSingletonClock;
 
+#ifdef USE_LIBUV
+  struct sleep_uv_adapter *adapter = malloc(sizeof(struct sleep_uv_adapter));
+  adapter->call_state = state;
+  adapter->timer.data = adapter;
+  adapter->runtime = rt;
+  adapter->trigger_time = rt->current_time + 1.0;
+
+  uv_timer_init(uv_default_loop(), &adapter->timer);
+  uv_timer_start(&adapter->timer, &sleep_adapter_result, 100, 0);
+#else
   rt->after_delay[rt->next_delay] = state->caller;
   rt->after_delay_futures[rt->next_delay++] = state->result[0];
   free(state);
+#endif
 }
 
-void unique_effect_ReadLine(val_t console, val_t *console_out,
-                            val_t *name_out) {
+void unique_effect_ReadLine(struct unique_effect_runtime *rt, val_t console,
+                            val_t *console_out, val_t *name_out) {
   assert(console == kSingletonConsole);
   *name_out = strdup("World");
   *console_out = console;
 }
 
-void unique_effect_itoa(val_t int_val, val_t *string_out) {
+void unique_effect_itoa(struct unique_effect_runtime *rt, val_t int_val,
+                        val_t *string_out) {
   *string_out = malloc(32);
   snprintf(*string_out, 31, "%lu", (intptr_t)int_val);
 }
 
-void unique_effect_concat(val_t a, val_t b, val_t *result) {
+void unique_effect_concat(struct unique_effect_runtime *rt, val_t a, val_t b,
+                          val_t *result) {
   size_t la = strlen(a), lb = strlen(b);
   char *buf = malloc(la + lb + 1);
   memcpy(&buf[0], a, la);
@@ -91,50 +140,59 @@ void unique_effect_exit(struct unique_effect_runtime *rt, void *state) {
   rt->called_exit = true;
 }
 
-void unique_effect_len(val_t message, val_t *result) {
+void unique_effect_len(struct unique_effect_runtime *rt, val_t message,
+                       val_t *result) {
   *result = (void *)(intptr_t)strlen((char *)message);
 }
 
-void unique_effect_fork(val_t parent, val_t *a_out, val_t *b_out) {
+void unique_effect_fork(struct unique_effect_runtime *rt, val_t parent,
+                        val_t *a_out, val_t *b_out) {
   assert(parent == kSingletonClock);
   *a_out = parent;
   *b_out = parent;
 }
 
-void unique_effect_join(val_t a, val_t b, val_t *result) {
+void unique_effect_join(struct unique_effect_runtime *rt, val_t a, val_t b,
+                        val_t *result) {
   assert(a == kSingletonClock);
   assert(b == kSingletonClock);
   *result = a;
 }
 
-void unique_effect_copy(val_t a, val_t *result) { *result = strdup(a); }
+void unique_effect_copy(struct unique_effect_runtime *rt, val_t a,
+                        val_t *result) {
+  *result = strdup(a);
+}
 
 void unique_effect_runtime_init(struct unique_effect_runtime *rt) {
   rt->next_call = 0;
   rt->next_delay = 0;
   rt->current_call = 0;
+  rt->current_time = 0.0;
 }
 
-void unique_effect_runtime_loop(struct unique_effect_runtime *rt) {
+void unique_effect_runtime_loop(struct unique_effect_runtime *runtime) {
+#ifdef USE_LIBUV
+  finish_current_iteration(runtime);
+
+  uv_run(uv_default_loop(), UV_RUN_DEFAULT);
+  uv_loop_close(uv_default_loop());
+#else
   while (true) {
-    for (; rt->current_call < rt->next_call; rt->current_call++) {
-      rt->upcoming_calls[rt->current_call].func(
-          rt, rt->upcoming_calls[rt->current_call].state);
-    }
-    if (rt->next_delay > 0) {
-      fprintf(stdout, "sleeping (%d outstanding timer[s])...", rt->next_delay);
-      fflush(stdout);
-      usleep(100000);
-      fprintf(stdout, "done\n");
-      for (int i = 0; i < rt->next_delay; i++) {
-        unique_effect_runtime_schedule(rt, rt->after_delay[i]);
-        rt->after_delay_futures[i]->ready = true;
+    finish_current_iteration(runtime);
+    if (runtime->next_delay > 0) {
+      for (int i = 0; i < runtime->next_delay; i++) {
+        unique_effect_runtime_schedule(runtime, runtime->after_delay[i]);
+        runtime->after_delay_futures[i]->ready = true;
       }
-      rt->next_delay = 0;
+      runtime->next_delay = 0;
+      runtime->current_time += 1.0;
     } else {
       break;
     }
   }
+#endif
 
-  assert(rt->called_exit);
+  printf("finished after %0.1fs\n", runtime->current_time);
+  assert(runtime->called_exit);
 }
