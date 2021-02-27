@@ -1,0 +1,3 @@
+0.0s Result: [1, 2, 3, 4]
+0.0s Empty array: []
+finished after 0.0s

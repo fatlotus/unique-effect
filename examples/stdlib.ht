@@ -15,3 +15,7 @@ sync native func copy(a: &String): String
 // Parallel programming support. See loops.ht for an example of how this works.
 sync native func fork(clock: Clock): (Clock, Clock)
 sync native func join(a: Clock, b: Clock): Clock
+
+// Rudimentary support for (append only) arrays.
+sync native func append(list: Array[Integer], elem: Integer): Array[Integer]
+sync native func debug(list: &Array[Integer]): String

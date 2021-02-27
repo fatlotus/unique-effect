@@ -53,6 +53,12 @@ struct unique_effect_sleep_state {
   bool conditions[1]; // needed for calling convention
 };
 
+struct unique_effect_array {
+  int length;
+  int capacity;
+  val_t elements[];
+};
+
 extern val_t kSingletonConsole;
 extern val_t kSingletonClock;
 

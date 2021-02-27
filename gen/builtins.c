@@ -164,6 +164,34 @@ void unique_effect_copy(struct unique_effect_runtime *rt, val_t a,
   *result = strdup(a);
 }
 
+void unique_effect_append(struct unique_effect_runtime *rt,
+                          struct unique_effect_array *ary, val_t value,
+                          struct unique_effect_array **ary_out) {
+  if (ary->length == ary->capacity) {
+    ary = realloc(ary, sizeof(struct unique_effect_array) +
+                           sizeof(val_t) * ary->capacity * 2 + 1);
+    ary->capacity = 2 * ary->capacity + 1;
+  }
+  ary->elements[ary->length++] = value;
+  *ary_out = ary;
+}
+
+void unique_effect_debug(struct unique_effect_runtime *rt,
+                         struct unique_effect_array *ary, val_t *result_out) {
+  char *result = malloc(512);
+  result[0] = '[';
+  int length = 1;
+  for (int i = 0; i < ary->length; i++) {
+    length += snprintf(&result[length], 512 - length, i == 0 ? "%ld" : ", %ld",
+                       (intptr_t)ary->elements[i]);
+  }
+  if (length < 512)
+    result[length++] = ']';
+  if (length < 512)
+    result[length++] = '\0';
+  *result_out = result;
+}
+
 void unique_effect_runtime_init(struct unique_effect_runtime *rt) {
   rt->next_call = 0;
   rt->next_delay = 0;

@@ -27,7 +27,13 @@ type generatedStatement interface {
 
 func freeGarbage(gen *generator, garbage map[register]*Kind, w io.Writer) {
 	for reg, kind := range garbage {
-		fmt.Fprintf(w, "        if (%[1]s.ready) free(%[1]s.value); // %[2]s\n", gen.Reg(reg), kind)
+		fmt.Fprintf(w, "        if (%s.ready) { // %s\n", gen.Reg(reg), kind)
+		// if kind.Family == FamilyArray {
+		// 	fmt.Fprintf(w, "        struct unique_effect_array *ary = (struct unique_effect_array*)%s.value;\n", gen.Reg(reg))
+		// 	fmt.Fprintf(w, "        for (int i = 0; i < ary->length; i++) { free(ary->elements[i]); }\n")
+		// }
+		fmt.Fprintf(w, "          free(%[1]s.value); // %[2]s\n", gen.Reg(reg), kind)
+		fmt.Fprintf(w, "        }\n")
 	}
 }
 
@@ -243,4 +249,25 @@ func (g *genIntegerComparison) Generate(gen *generator) string {
 
 func (g *genIntegerComparison) Deps() ([]register, []register) {
 	return []register{g.Left, g.Right}, []register{g.Result}
+}
+
+type genNewArray struct {
+	Result register
+	Values []register
+}
+
+func (g *genNewArray) Generate(gen *generator) string {
+	b := strings.Builder{}
+	fmt.Fprintf(&b, "    struct unique_effect_array* ary = malloc(sizeof(struct unique_effect_array) + sizeof(val_t) * %d);\n", len(g.Values))
+	fmt.Fprintf(&b, "    ary->length = ary->capacity = %d;\n", len(g.Values))
+	for i, val := range g.Values {
+		fmt.Fprintf(&b, "    ary->elements[%d] = %s.value;\n", i, gen.Reg(val))
+	}
+	fmt.Fprintf(&b, "    %s.value = ary;\n", gen.Reg(g.Result))
+	fmt.Fprintf(&b, "    %s.ready = true;\n", gen.Reg(g.Result))
+	return b.String()
+}
+
+func (g *genNewArray) Deps() ([]register, []register) {
+	return g.Values, []register{g.Result}
 }

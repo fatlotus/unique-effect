@@ -1,0 +1,9 @@
+import stdlib
+
+func main(stdout: Stream): Stream {
+	let x = [1, 2, 3]
+	append(&x, 4)
+	print(&stdout, "Result: " + debug(x))
+	print(&stdout, "Empty array: " + debug([]))
+	return stdout
+}

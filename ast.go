@@ -118,6 +118,10 @@ func (a *astExpressionBase) Captures(out map[string]bool) {
 		for _, ast := range a.Tuple {
 			ast.Captures(out)
 		}
+	} else if a.IsArray {
+		for _, ast := range a.Array {
+			ast.Captures(out)
+		}
 	}
 }
 
@@ -161,6 +165,29 @@ func (a *astExpressionBase) Generate(p *program, b *generator) ([]register, erro
 			result = append(result, regs[0])
 		}
 		return result, nil
+
+	} else if a.IsArray {
+		result := []register{}
+		kind := (*Kind)(nil)
+		for _, ast := range a.Array {
+			regs, err := ast.Generate(p, b)
+			if err != nil {
+				return nil, err
+			}
+			if len(regs) != 1 {
+				return nil, errors.New("Cannot use multi-variable value in array")
+			}
+			mykind := b.Registers[regs[0]]
+			if kind == nil {
+				kind = mykind
+			} else if err := kind.IsEquivalent(*mykind); err != nil {
+				return nil, err
+			}
+			result = append(result, regs[0])
+		}
+		reg := b.NewReg(&Kind{false, FamilyArray, []*Kind{kind}}, true)
+		b.Stmt(&genNewArray{reg, result})
+		return []register{reg}, nil
 
 	} else {
 		return nil, fmt.Errorf("Unknown astExpressionBase %v", a)

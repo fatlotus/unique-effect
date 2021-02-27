@@ -26,9 +26,9 @@ import (
 type Family int
 
 type Kind struct {
-	Borrowed bool   `@"&"?`
-	Family   Family `@Ident`
-	Args     []*Kind
+	Borrowed bool    `@"&"?`
+	Family   Family  `@Ident`
+	Args     []*Kind `("[" @@ ("," @@)* "]")?`
 }
 
 const (
@@ -38,6 +38,7 @@ const (
 	FamilyTuple
 	FamilyInteger
 	FamilyBoolean
+	FamilyArray
 )
 
 func (f Family) String() string {
@@ -52,6 +53,8 @@ func (f Family) String() string {
 		return "Integer"
 	case FamilyBoolean:
 		return "Boolean"
+	case FamilyArray:
+		return "Array"
 	default:
 		return "?? Unknown"
 	}
@@ -71,6 +74,8 @@ func (f *Family) Capture(values []string) error {
 		*f = FamilyInteger
 	case "Boolean":
 		*f = FamilyBoolean
+	case "Array":
+		*f = FamilyArray
 	default:
 		return fmt.Errorf("Unknown type: %s", values[0])
 	}
@@ -214,6 +219,8 @@ type astExpressionBase struct {
 	String   *string          `| @String`
 	Tuple    []*astExpression `| "(" @@ ("," @@)+ ")"`
 	Integer  *int64           `| @Int`
+	IsArray  bool             `| @("["`
+	Array    []*astExpression `  (@@ ("," @@)*)? "]")`
 }
 
 type program struct {

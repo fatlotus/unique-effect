@@ -124,7 +124,7 @@ func (g *generator) GarbageRegisters(keep []register) (map[register]*Kind, error
 	for index, kind := range g.Registers {
 		reg := g.ResolveRegister(register(index))
 		if kind != nil && !keepMap[reg] && !kind.Borrowed {
-			if kind.Family == FamilyString {
+			if kind.Family == FamilyString || kind.Family == FamilyArray {
 				garbage[reg] = kind
 			} else if kind.Family != FamilyBoolean && kind.Family != FamilyInteger {
 				return nil, fmt.Errorf("unused value of type %s (r%d)", kind, reg)
