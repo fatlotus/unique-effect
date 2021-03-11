@@ -16,6 +16,10 @@ sync native func copy(a: &String): String
 sync native func fork(clock: Clock): (Clock, Clock)
 sync native func join(a: Clock, b: Clock): Clock
 
+// Wait for the first clock to complete, and return it. The other clock is
+// discarded. See cancellation.ht for an example.
+native func first(a: Clock, b: Clock): Clock
+
 // Rudimentary support for (append only) arrays.
 sync native func append(list: Array[Integer], elem: Integer): Array[Integer]
 sync native func debug(list: &Array[Integer]): String

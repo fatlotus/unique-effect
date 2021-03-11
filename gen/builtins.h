@@ -38,9 +38,8 @@ struct unique_effect_runtime {
   int current_call;
 
   // Compatibility mode (in case libuv is unavailable).
-  closure_t after_delay[20];
-  future_t *after_delay_futures[20];
-  int next_delay;
+  struct unique_effect_sleep_state *timers[20];
+  int next_timer;
 
   bool called_exit;
   double current_time;
@@ -48,6 +47,13 @@ struct unique_effect_runtime {
 
 struct unique_effect_sleep_state {
   future_t r[1];
+  future_t *result[1];
+  closure_t caller;
+  bool conditions[1]; // needed for calling convention
+};
+
+struct unique_effect_first_state {
+  future_t r[2];
   future_t *result[1];
   closure_t caller;
   bool conditions[1]; // needed for calling convention

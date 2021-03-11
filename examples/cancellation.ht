@@ -1,0 +1,15 @@
+import stdlib
+
+func main(clock: Clock): Clock {
+	// Despite nominally sleeping for two seconds, this program will complete
+	// in one second, since we only wait for the first Clock object to
+	// complete.
+	let a, b = fork(clock)
+
+	sleep(&a)
+	sleep(&a)
+
+	sleep(&b)
+
+	return first(a, b)
+}

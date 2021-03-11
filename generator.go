@@ -230,7 +230,7 @@ func (g *generator) FormatMainInto(w io.Writer) error {
 	fmt.Fprintf(w, "int main(int argc, const char* argv[]) {\n")
 	fmt.Fprintf(w, "  struct unique_effect_runtime rt;\n")
 	fmt.Fprintf(w, "  unique_effect_runtime_init(&rt);\n")
-	fmt.Fprintf(w, "  struct unique_effect_%[1]s_state *st = malloc(sizeof(struct unique_effect_%[1]s_state));\n", g.Name)
+	fmt.Fprintf(w, "  struct unique_effect_%[1]s_state *st = calloc(1, sizeof(struct unique_effect_%[1]s_state));\n", g.Name)
 
 	for i, kind := range g.ArgKinds {
 		if kind.Family == FamilyClock {

@@ -110,12 +110,9 @@ type genCallAsyncFunction struct {
 func (g *genCallAsyncFunction) Generate(gen *generator) string {
 	var result strings.Builder
 	fmt.Fprintf(&result, "    if (sp->call_%d == NULL) {\n", g.ChildCall)
-	fmt.Fprintf(&result, "      sp->call_%d = malloc(sizeof(struct unique_effect_%s_state));\n",
+	fmt.Fprintf(&result, "      sp->call_%d = calloc(1, sizeof(struct unique_effect_%s_state));\n",
 		g.ChildCall, g.Name)
 
-	for i, arg := range g.Args {
-		fmt.Fprintf(&result, "      sp->call_%d->r[%d] = %s;\n", g.ChildCall, i, gen.Reg(arg))
-	}
 	for i, ret := range g.Result {
 		fmt.Fprintf(&result, "      sp->call_%d->result[%d] = &%s;\n", g.ChildCall, i, gen.Reg(ret))
 	}
@@ -123,13 +120,19 @@ func (g *genCallAsyncFunction) Generate(gen *generator) string {
 	fmt.Fprintf(&result, "      sp->call_%d->caller.func = &unique_effect_%s;\n", g.ChildCall, gen.Name)
 	fmt.Fprintf(&result, "      sp->call_%d->caller.state = sp;\n", g.ChildCall)
 	fmt.Fprintf(&result, "      sp->call_%d->conditions[0] = false;\n", g.ChildCall)
-	fmt.Fprintf(&result, "      unique_effect_runtime_schedule(rt, (closure_t){.state = sp->call_%d, .func = &unique_effect_%s});\n", g.ChildCall, g.Name)
 	fmt.Fprintf(&result, "    }\n")
+
+	for i, arg := range g.Args {
+		fmt.Fprintf(&result, "    sp->call_%d->r[%d] = %s;\n", g.ChildCall, i, gen.Reg(arg))
+	}
+	fmt.Fprintf(&result, "    unique_effect_runtime_schedule(rt, (closure_t){.state = sp->call_%d, .func = &unique_effect_%s});\n", g.ChildCall, g.Name)
+
 	return result.String()
 }
 
 func (g *genCallAsyncFunction) Deps() ([]register, []register) {
-	return g.Args, g.Result
+	// Async functions track dependencies internally.
+	return nil, g.Result
 }
 
 type genRestartLoop struct {
