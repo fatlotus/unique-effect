@@ -274,3 +274,58 @@ func (g *genNewArray) Generate(gen *generator) string {
 func (g *genNewArray) Deps() ([]register, []register) {
 	return g.Values, []register{g.Result}
 }
+
+type genMakeTuple struct {
+	Inputs []register
+	Result register
+}
+
+func (g *genMakeTuple) Generate(gen *generator) string {
+	b := strings.Builder{}
+	fmt.Fprintf(&b, "    val_t* tuple = malloc(sizeof(val_t) * %d);\n", len(g.Inputs))
+	for i, input := range g.Inputs {
+		fmt.Fprintf(&b, "    tuple[%d] = %s.value;\n", i, gen.Reg(input))
+	}
+	fmt.Fprintf(&b, "    %s.value = tuple;\n", gen.Reg(g.Result))
+	fmt.Fprintf(&b, "    %s.ready = true;\n", gen.Reg(g.Result))
+	return b.String()
+}
+
+func (g *genMakeTuple) Deps() ([]register, []register) {
+	return g.Inputs, []register{g.Result}
+}
+
+type genCheckUnionType struct {
+	Input     register
+	KindIndex int
+	Result    register
+}
+
+func (g *genCheckUnionType) Generate(gen *generator) string {
+	b := strings.Builder{}
+	fmt.Fprintf(&b, "    %s.value = (val_t)(intptr_t)(((val_t*)%s.value)[0] == (val_t)%d);\n",
+		gen.Reg(g.Result), gen.Reg(g.Input), g.KindIndex)
+	fmt.Fprintf(&b, "    %s.ready = true;\n", gen.Reg(g.Result))
+	return b.String()
+}
+
+func (g *genCheckUnionType) Deps() ([]register, []register) {
+	return []register{g.Input}, []register{g.Result}
+}
+
+type genExtractUnionValue struct {
+	Input  register
+	Result register
+}
+
+func (g *genExtractUnionValue) Generate(gen *generator) string {
+	b := strings.Builder{}
+	fmt.Fprintf(&b, "    %s.value = ((val_t*)%s.value)[1];\n", gen.Reg(g.Result), gen.Reg(g.Input))
+	fmt.Fprintf(&b, "    %s.ready = true;\n", gen.Reg(g.Result))
+	fmt.Fprintf(&b, "    free(%s.value);", gen.Reg(g.Input))
+	return b.String()
+}
+
+func (g *genExtractUnionValue) Deps() ([]register, []register) {
+	return []register{g.Input}, []register{g.Result}
+}

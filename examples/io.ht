@@ -1,0 +1,19 @@
+import stdlib
+
+func main(fs: FileSystem, console: Stream): (FileSystem, Stream) {
+	let result = mightfail(&fs)
+	if result is Error {
+		print(&console, "First operation failed: " + reason(result))
+	} else {
+		print(&console, "Success: " + result)
+	}
+
+	let result = mightfail(&fs)
+	if result is Error {
+		print(&console, "Second operation failed: " + reason(result))
+	} else {
+		print(&console, "Success: " + result)
+	}
+
+	return (fs, console)
+}

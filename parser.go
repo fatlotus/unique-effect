@@ -39,6 +39,9 @@ const (
 	FamilyInteger
 	FamilyBoolean
 	FamilyArray
+	FamilyFileSystem
+	FamilyUnion
+	FamilyError
 )
 
 func (f Family) String() string {
@@ -49,12 +52,20 @@ func (f Family) String() string {
 		return "String"
 	case FamilyClock:
 		return "Clock"
+	case FamilyTuple:
+		return "Tuple"
 	case FamilyInteger:
 		return "Integer"
 	case FamilyBoolean:
 		return "Boolean"
 	case FamilyArray:
 		return "Array"
+	case FamilyFileSystem:
+		return "FileSystem"
+	case FamilyUnion:
+		return "Union"
+	case FamilyError:
+		return "Error"
 	default:
 		return "?? Unknown"
 	}
@@ -76,6 +87,12 @@ func (f *Family) Capture(values []string) error {
 		*f = FamilyBoolean
 	case "Array":
 		*f = FamilyArray
+	case "FileSystem":
+		*f = FamilyFileSystem
+	case "Union":
+		*f = FamilyUnion
+	case "Error":
+		*f = FamilyError
 	default:
 		return fmt.Errorf("Unknown type: %s", values[0])
 	}
@@ -87,7 +104,18 @@ func (k Kind) String() string {
 	if k.Borrowed {
 		result += "&"
 	}
-	return result + k.Family.String()
+	result += k.Family.String()
+	if len(k.Args) > 0 {
+		result += "["
+		for i, arg := range k.Args {
+			if i > 0 {
+				result += ", "
+			}
+			result += arg.String()
+		}
+		result += "]"
+	}
+	return result
 }
 
 func (k Kind) CanConvertTo(other Kind) error {
@@ -175,9 +203,10 @@ type astRepeatStmt struct {
 }
 
 type astConditionalStmt struct {
-	Cond      *astExpression `"if" @@`
-	IfTrue    *astBlock      `@@`
-	Otherwise *astBlock      `"else" @@`
+	Cond           *astExpression `"if" @@`
+	TypeAssertKind *Kind          `("is" @@)?`
+	IfTrue         *astBlock      `@@`
+	Otherwise      *astBlock      `"else" @@`
 }
 
 type astMethodCall struct {

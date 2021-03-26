@@ -67,6 +67,7 @@ struct unique_effect_array {
 
 extern val_t kSingletonConsole;
 extern val_t kSingletonClock;
+extern val_t kSingletonFileSystem;
 
 void unique_effect_runtime_init(struct unique_effect_runtime *rt);
 void unique_effect_runtime_schedule(struct unique_effect_runtime *rt,

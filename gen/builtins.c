@@ -30,6 +30,8 @@
 
 val_t kSingletonConsole = (void *)40;
 val_t kSingletonClock = (void *)50;
+val_t kSingletonFileSystem = (void *)60;
+val_t kSingletonFileSystemWillFail = (void *)70;
 
 void unique_effect_runtime_schedule(struct unique_effect_runtime *rt,
                                     closure_t closure) {
@@ -284,6 +286,28 @@ void unique_effect_debug(struct unique_effect_runtime *rt,
   if (length < 512)
     result[length++] = '\0';
   *result_out = result;
+}
+
+void unique_effect_mightfail(struct unique_effect_runtime *rt, val_t fs,
+                             val_t *fs_out, val_t *result) {
+  assert(fs == kSingletonFileSystem || fs == kSingletonFileSystemWillFail);
+
+  *fs_out = fs == kSingletonFileSystem ? kSingletonFileSystemWillFail
+                                       : kSingletonFileSystem;
+  *result = malloc(sizeof(val_t) * 2);
+
+  if (fs == kSingletonFileSystem) {
+    ((val_t *)*result)[0] = (val_t)(intptr_t)0;
+    ((val_t *)*result)[1] = strdup("Success!");
+  } else {
+    ((val_t *)*result)[0] = (val_t)(intptr_t)1;
+    ((val_t *)*result)[1] = NULL;
+  }
+}
+
+void unique_effect_reason(struct unique_effect_runtime *rt, val_t err,
+                          val_t *reason) {
+  *reason = strdup("some error");
 }
 
 void unique_effect_runtime_init(struct unique_effect_runtime *rt) {

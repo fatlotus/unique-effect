@@ -239,13 +239,16 @@ func (g *generator) FormatMainInto(w io.Writer) error {
 		} else if kind.Family == FamilyStream {
 			fmt.Fprintf(w, "  st->r[%d].value = kSingletonConsole;\n", i)
 			fmt.Fprintf(w, "  st->r[%d].ready = true;\n", i)
+		} else if kind.Family == FamilyFileSystem {
+			fmt.Fprintf(w, "  st->r[%d].value = kSingletonFileSystem;\n", i)
+			fmt.Fprintf(w, "  st->r[%d].ready = true;\n", i)
 		} else {
 			return fmt.Errorf("not sure how to synthesize a %s", *kind)
 		}
 	}
 
 	for i, kind := range g.ReturnKind {
-		if kind.Family == FamilyClock || kind.Family == FamilyStream {
+		if kind.Family == FamilyClock || kind.Family == FamilyStream || kind.Family == FamilyFileSystem {
 			fmt.Fprintf(w, "  future_t dropped_result_%d;\n", i)
 			fmt.Fprintf(w, "  st->result[%[1]d] = &dropped_result_%[1]d;\n", i)
 		} else {
@@ -277,4 +280,18 @@ func (g *generator) NewCondition() condition {
 func (g *generator) NewChildCall(name string) childCall {
 	g.ChildCalls = append(g.ChildCalls, name)
 	return childCall(len(g.ChildCalls) - 1)
+}
+
+func (g *generator) MaybeMakeTuple(registers []register) register {
+	if len(registers) == 1 {
+		return registers[0]
+	} else {
+		types := []*Kind{}
+		for _, reg := range registers {
+			types = append(types, g.Registers[reg])
+		}
+		result := g.NewReg(&Kind{false, FamilyTuple, types}, true)
+		g.Stmt(&genMakeTuple{Inputs: registers, Result: result})
+		return result
+	}
 }

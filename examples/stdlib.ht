@@ -23,3 +23,11 @@ native func first(a: Clock, b: Clock): Clock
 // Rudimentary support for (append only) arrays.
 sync native func append(list: Array[Integer], elem: Integer): Array[Integer]
 sync native func debug(list: &Array[Integer]): String
+
+sync native func mightfail(fs: FileSystem): (FileSystem, Union[String, Error])
+sync native func reason(e: Error): String
+
+// Basic read only file I/O support.
+// native func open(fs: FileSystem, path: String): (FileSystem, File | Error)
+// native func read(fp: File): (File, String | Error)
+// native func close(fs: FileSystem, fp: File): FileSystem

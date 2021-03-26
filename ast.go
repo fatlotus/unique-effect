@@ -37,7 +37,50 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 	if len(cond) != 1 {
 		return errors.New("Got multiple values in condition")
 	}
-	if err := b.Registers[cond[0]].CanConvertTo(Kind{true, FamilyBoolean, nil}); err != nil {
+	condition := cond[0]
+
+	typeAssertVarName := ""
+	unionKind := (*Kind)(nil)
+	unionRegister := register(0)
+
+	if a.TypeAssertKind != nil {
+		// Allow type assertions to narrow the type of a union
+		if a.Cond.Comparison == nil && len(a.Cond.Sum.Terms) == 0 && len(a.Cond.Sum.Call.Calls) == 0 && a.Cond.Sum.Call.Base.Variable != nil {
+			typeAssertVarName = *a.Cond.Sum.Call.Base.Variable
+			unionRegister = b.Locals[typeAssertVarName]
+			unionKind = b.Registers[unionRegister]
+		}
+
+		union := b.Registers[condition]
+		if union.Family != FamilyUnion {
+			return errors.New("Attempted to do a type switch on a non-union")
+		}
+
+		found := -1
+		for i, option := range union.Args {
+			if option.IsEquivalent(*a.TypeAssertKind) == nil {
+				found = i
+				break
+			}
+		}
+
+		if found < 0 {
+			return errors.New("Attempted to type switch on impossible type")
+		}
+
+		result := b.NewReg(&Kind{false, FamilyBoolean, nil}, true)
+		b.Stmt(&genCheckUnionType{condition, found, result})
+
+		condition = result
+
+		// Delete the union type
+		if typeAssertVarName != "" {
+			b.Registers[unionRegister] = nil
+			delete(b.Locals, typeAssertVarName)
+		}
+	}
+
+	if err := b.Registers[condition].CanConvertTo(Kind{true, FamilyBoolean, nil}); err != nil {
 		return err
 	}
 
@@ -47,11 +90,18 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 	registers := make([]*Kind, len(b.Registers))
 	copy(registers, b.Registers)
 
-	b.Stmt(&genBranch{cond[0], trueCondition, falseCondition})
+	b.Stmt(&genBranch{condition, trueCondition, falseCondition})
 
 	localsAtStart := b.CopyOfLocals()
 	localsBeforeTrue := b.CopyOfLocals()
 	b.CurrentCondition = trueCondition
+
+	if typeAssertVarName != "" {
+		overwrittenReg := b.NewReg(a.TypeAssertKind, true)
+		b.Stmt(&genExtractUnionValue{unionRegister, overwrittenReg})
+		b.Locals[typeAssertVarName] = overwrittenReg
+	}
+
 	if err := a.IfTrue.Generate(p, b); err != nil {
 		return err
 	}
@@ -62,6 +112,20 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 	localsBeforeFalse := b.CopyOfLocals()
 
 	b.CurrentCondition = falseCondition
+
+	// If the union is composed of exactly two values, use the remaining one.
+	if typeAssertVarName != "" && len(unionKind.Args) == 2 {
+		unionTypeArgs := unionKind.Args
+		leftover := unionTypeArgs[0]
+		if unionTypeArgs[0].IsEquivalent(*a.TypeAssertKind) == nil {
+			leftover = unionTypeArgs[1]
+		}
+
+		overwrittenReg := b.NewReg(leftover, true)
+		b.Stmt(&genExtractUnionValue{unionRegister, overwrittenReg})
+		b.Locals[typeAssertVarName] = overwrittenReg
+	}
+
 	if err := a.Otherwise.Generate(p, b); err != nil {
 		return err
 	}
@@ -74,11 +138,14 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 	for name := range b.Locals {
 		regTrue, ok := localsAfterTrue[name]
 		if !ok {
-			return errors.New("local var from true is missing")
+			delete(b.Locals, name)
+			continue
 		}
+
 		regFalse, ok := localsAfterFalse[name]
 		if !ok {
-			return errors.New("local var from false is missing")
+			delete(b.Locals, name)
+			continue
 		}
 
 		if err := b.Registers[regTrue].IsEquivalent(*b.Registers[regFalse]); err != nil {
@@ -395,6 +462,10 @@ func (a *astLetStmt) Generate(p *program, b *generator) error {
 	regs, err := a.Value.Generate(p, b)
 	if err != nil {
 		return err
+	}
+
+	if len(a.VarNames) == 1 {
+		regs = []register{b.MaybeMakeTuple(regs)}
 	}
 
 	if len(regs) != len(a.VarNames) {
