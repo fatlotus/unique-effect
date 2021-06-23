@@ -19,10 +19,14 @@
 
 #include <stdbool.h>
 
+#ifdef USE_LIBUV
+#include <uv.h>
+#endif
+
 typedef void *val_t;
 typedef struct {
   val_t value;
-  bool ready;
+  bool ready, cancelled;
 } future_t;
 
 typedef void (*func_t)();
@@ -49,12 +53,22 @@ struct unique_effect_sleep_state {
   future_t r[1];
   future_t *result[1];
   closure_t caller;
+
+#ifdef USE_LIBUV
+  // Needed to get back into the event loop.
+  struct unique_effect_runtime *runtime;
+  uv_timer_t timer;
+  double trigger_time;
+#else
+  struct unique_effect_sleep_state** pending_timer;
+#endif
+
   bool conditions[1]; // needed for calling convention
 };
 
 struct unique_effect_first_state {
   future_t r[2];
-  future_t *result[1];
+  future_t *result[2];
   closure_t caller;
   bool conditions[1]; // needed for calling convention
 };

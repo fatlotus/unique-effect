@@ -6,10 +6,13 @@ func main(clock: Clock): Clock {
 	// complete.
 	let a, b = fork(clock)
 
-	sleep(&a)
-	sleep(&a)
+    let c, d = fork(a)
+	sleep(&c)
+	sleep(&c)
+	let a = join(c, d)
 
 	sleep(&b)
 
-	return first(a, b)
+	let first, second = first(a, b)
+	return join(first, second)
 }

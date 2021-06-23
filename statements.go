@@ -25,6 +25,10 @@ type generatedStatement interface {
 	Deps() ([]register, []register)
 }
 
+type statementWithCancel interface {
+	GenerateCancel(*generator, io.Writer)
+}
+
 func freeGarbage(gen *generator, garbage map[register]*Kind, w io.Writer) {
 	for reg, kind := range garbage {
 		fmt.Fprintf(w, "        if (%s.ready) { // %s\n", gen.Reg(reg), kind)
@@ -123,7 +127,9 @@ func (g *genCallAsyncFunction) Generate(gen *generator) string {
 	fmt.Fprintf(&result, "    }\n")
 
 	for i, arg := range g.Args {
-		fmt.Fprintf(&result, "    sp->call_%d->r[%d] = %s;\n", g.ChildCall, i, gen.Reg(arg))
+		fmt.Fprintf(&result, "    sp->call_%d->r[%d].value = %s.value;\n", g.ChildCall, i, gen.Reg(arg))
+		fmt.Fprintf(&result, "    sp->call_%d->r[%d].ready = %s.ready;\n", g.ChildCall, i, gen.Reg(arg))
+		fmt.Fprintf(&result, "    %s.cancelled = sp->call_%d->r[%d].cancelled;\n", gen.Reg(arg), g.ChildCall, i)
 	}
 	fmt.Fprintf(&result, "    unique_effect_runtime_schedule(rt, (closure_t){.state = sp->call_%d, .func = &unique_effect_%s});\n", g.ChildCall, g.Name)
 
@@ -133,6 +139,13 @@ func (g *genCallAsyncFunction) Generate(gen *generator) string {
 func (g *genCallAsyncFunction) Deps() ([]register, []register) {
 	// Async functions track dependencies internally.
 	return nil, g.Result
+}
+
+func (g *genCallAsyncFunction) GenerateCancel(gen *generator, w io.Writer) {
+	for _, arg := range g.Args {
+		fmt.Fprintf(w, "    %s.cancelled = true;\n", gen.Reg(arg))
+	}
+	fmt.Fprintf(w, "    unique_effect_runtime_schedule(rt, (closure_t){.state = sp->call_%d, .func = &unique_effect_%s});\n", g.ChildCall, g.Name)
 }
 
 type genRestartLoop struct {

@@ -224,6 +224,30 @@ func (g *generator) FormatInto(w io.Writer) {
 		fmt.Fprintf(w, "  }\n")
 	}
 
+	// Iterate in reverse order, propagate the cancellation status.
+	for i := len(g.Conditions) - 1; i >= 0; i -= 1 {
+		stmt := g.Conditions[i].Statement
+
+		needs, provides := stmt.Deps()
+		if len(provides) == 0 {
+			continue
+		}
+
+		fmt.Fprintf(w, "  if (true")
+		for _, provide := range provides {
+			fmt.Fprintf(w, " && %[1]s.cancelled && !%[1]s.ready", g.Reg(provide))
+		}
+		fmt.Fprintf(w, ") {\n")
+		if cancel, ok := stmt.(statementWithCancel); ok {
+			cancel.GenerateCancel(g, w)
+		} else {
+			for _, need := range needs {
+				fmt.Fprintf(w, "    %s.cancelled = true;\n", g.Reg(need))
+			}
+		}
+		fmt.Fprintf(w, "  }\n")
+	}
+
 	// g.DumpRegisters(w)
 
 	fmt.Fprintf(w, "}\n")

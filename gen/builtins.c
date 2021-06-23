@@ -66,82 +66,45 @@ static void finish_current_iteration(struct unique_effect_runtime *rt) {
 }
 
 #ifdef USE_LIBUV
-struct sleep_uv_adapter {
-  struct unique_effect_runtime *runtime;
-  struct unique_effect_sleep_state *call_state;
-  uv_timer_t timer;
-  double trigger_time;
-};
-
 static void sleep_adapter_result(uv_timer_t *timer) {
-  struct sleep_uv_adapter *adapter = (struct sleep_uv_adapter *)timer->data;
-  struct unique_effect_runtime *runtime = adapter->runtime;
+  struct unique_effect_sleep_state *state = (struct unique_effect_sleep_state *)timer->data;
+  struct unique_effect_runtime *runtime = state->runtime;
 
-  runtime->current_time = adapter->trigger_time;
-
-  adapter->call_state->result[0]->value = kSingletonClock;
-  adapter->call_state->result[0]->ready = true;
-
-  unique_effect_runtime_schedule(runtime, adapter->call_state->caller);
-
-  free(adapter->call_state);
-  free(adapter);
-
-  finish_current_iteration(runtime);
-}
-
-static void cancel_sleep(struct unique_effect_runtime *runtime, future_t *val) {
-  // Cancellation reuses the intermediate values before setting ready = true.
-  assert(val->ready == false);
-  assert(val->value != kSingletonClock);
-
-  if (val->value == NULL)
-    return;
-
-  struct sleep_uv_adapter *adapter = (struct sleep_uv_adapter *)val->value;
-  val->value = kSingletonClock;
-  val->ready = true;
-
-  assert(uv_timer_stop(&adapter->timer) == 0);
-
-  adapter->call_state->result[0]->value = kSingletonClock;
-  adapter->call_state->result[0]->ready = true;
-
-  unique_effect_runtime_schedule(runtime, adapter->call_state->caller);
-
-  free(adapter->call_state);
-  free(adapter);
-}
-#else
-static void cancel_sleep(struct unique_effect_runtime *runtime, future_t *val) {
-  assert(val->ready == false);
-  assert(val->value != kSingletonClock);
-
-  if (val->value == NULL)
-    return;
-
-  struct unique_effect_sleep_state **state_ptr =
-      (struct unique_effect_sleep_state **)val->value;
-
-  struct unique_effect_sleep_state *state = *state_ptr;
+  runtime->current_time = state->trigger_time;
 
   state->result[0]->value = kSingletonClock;
   state->result[0]->ready = true;
 
   unique_effect_runtime_schedule(runtime, state->caller);
 
-  // Cancel the pending timer.
-  *state_ptr = NULL;
   free(state);
+
+  finish_current_iteration(runtime);
 }
 #endif
 
 void unique_effect_sleep(struct unique_effect_runtime *rt,
                          struct unique_effect_sleep_state *state) {
-  // Make sure the previous operation has finished. If not, simply pass through
-  // the timer from before.
+  if (state->result[0]->cancelled && !state->r[0].cancelled) {
+    state->r[0].cancelled = true;
+
+    // Cancel the pending timer.
+#ifdef USE_LIBUV
+    assert(uv_timer_stop(&state->timer) == 0);
+#else
+    *state->pending_timer = NULL;
+#endif
+
+    state->result[0]->value = kSingletonClock;
+    state->result[0]->ready = true;
+
+    unique_effect_runtime_schedule(rt, state->caller);
+    free(state);
+    return;
+  }
+
+  // Wait until the previous timer completes before starting this one.
   if (!state->r[0].ready) {
-    *state->result[0] = state->r[0];
     return;
   }
 
@@ -152,29 +115,22 @@ void unique_effect_sleep(struct unique_effect_runtime *rt,
   state->conditions[0] = true;
 
 #ifdef USE_LIBUV
-  struct sleep_uv_adapter *adapter = malloc(sizeof(struct sleep_uv_adapter));
-  adapter->call_state = state;
-  adapter->timer.data = adapter;
-  adapter->runtime = rt;
-  adapter->trigger_time = rt->current_time + 1.0;
+  state->timer.data = state;
+  state->runtime = rt;
+  state->trigger_time = rt->current_time + 1.0;
 
-  // Store an intermediate value in case we need to cancel this clock.
-  state->result[0]->value = adapter;
-
-  uv_timer_init(uv_default_loop(), &adapter->timer);
-  uv_timer_start(&adapter->timer, &sleep_adapter_result, 100, 0);
+  uv_timer_init(uv_default_loop(), &state->timer);
+  uv_timer_start(&state->timer, &sleep_adapter_result, 100, 0);
 #else
   assert(state->r[0].value == kSingletonClock);
   assert(rt->next_timer < 20);
 
   // Register the new timer in the runtime.
-  // rt->after_delay[rt->next_delay] = state->caller;
-  // rt->after_delay_futures[rt->next_delay] = state->result[0];
   rt->timers[rt->next_timer] = state;
 
   // Store an intermediate value in case we need to cancel this clock, and wake
   // up the caller to let them know about it.
-  state->result[0]->value = &rt->timers[rt->next_timer];
+  state->pending_timer = &rt->timers[rt->next_timer];
   unique_effect_runtime_schedule(rt, state->caller);
 
   rt->next_timer++;
@@ -235,10 +191,14 @@ void unique_effect_join(struct unique_effect_runtime *rt, val_t a, val_t b,
 
 void unique_effect_first(struct unique_effect_runtime *runtime,
                          struct unique_effect_first_state *state) {
-  if (state->r[0].ready && !state->r[1].ready) {
-    cancel_sleep(runtime, &state->r[1]);
-  } else if (!state->r[0].ready && state->r[1].ready) {
-    cancel_sleep(runtime, &state->r[0]);
+  if (state->r[0].ready && !state->r[1].ready && !state->r[1].cancelled) {
+    state->r[1].cancelled = true;
+    unique_effect_runtime_schedule(runtime, state->caller);
+    return;
+  } else if (state->r[1].ready && !state->r[0].ready && !state->r[0].cancelled) {
+    state->r[0].cancelled = true;
+    unique_effect_runtime_schedule(runtime, state->caller);
+    return;
   }
 
   if (!state->r[0].ready || !state->r[1].ready) {
@@ -250,6 +210,9 @@ void unique_effect_first(struct unique_effect_runtime *runtime,
 
   state->result[0]->value = kSingletonClock;
   state->result[0]->ready = true;
+
+  state->result[1]->value = kSingletonClock;
+  state->result[1]->ready = true;
 
   unique_effect_runtime_schedule(runtime, state->caller);
   free(state);
