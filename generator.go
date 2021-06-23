@@ -16,6 +16,7 @@ package unique_effect
 
 import (
 	"fmt"
+	"github.com/alecthomas/participle/v2/lexer"
 	"io"
 )
 
@@ -25,17 +26,18 @@ type stmtWithCondition struct {
 }
 
 type generator struct {
-	Name          string
-	Conditions    []stmtWithCondition
-	Locals        map[string]register
-	Results       int
-	Registers     []*Kind
-	IsNative      bool
-	ArgKinds      []*Kind
-	ReturnKind    []*Kind
-	Substitutions map[register]register
-	ChildCalls    []string
-	NextClosure   int
+	Name           string
+	Conditions     []stmtWithCondition
+	Locals         map[string]register
+	ConsumedLocals map[string]*lexer.Position
+	Results        int
+	Registers      []*Kind
+	IsNative       bool
+	ArgKinds       []*Kind
+	ReturnKind     []*Kind
+	Substitutions  map[register]register
+	ChildCalls     []string
+	NextClosure    int
 
 	CurrentCondition condition
 	NextCondition    condition
@@ -46,6 +48,7 @@ func newGenerator(name string, program *program, argNames []string, argKinds []*
 	function.Name = name
 	function.Substitutions = map[register]register{}
 	function.Locals = map[string]register{}
+	function.ConsumedLocals = map[string]*lexer.Position{}
 	function.ArgKinds = argKinds
 	function.ReturnKind = results
 	function.Results = len(results)
@@ -123,10 +126,10 @@ func (g *generator) GarbageRegisters(keep []register) (map[register]*Kind, error
 	garbage := map[register]*Kind{}
 	for index, kind := range g.Registers {
 		reg := g.ResolveRegister(register(index))
-		if kind != nil && !keepMap[reg] && !kind.Borrowed {
-			if kind.Family == FamilyString || kind.Family == FamilyArray {
+		if kind != nil && !keepMap[reg] && kind.NeedsToBeDeleted() {
+			if kind.CanBeImplicitlyDeleted() {
 				garbage[reg] = kind
-			} else if kind.Family != FamilyBoolean && kind.Family != FamilyInteger {
+			} else {
 				return nil, fmt.Errorf("unused value of type %s (r%d)", kind, reg)
 			}
 		}
@@ -233,14 +236,8 @@ func (g *generator) FormatMainInto(w io.Writer) error {
 	fmt.Fprintf(w, "  struct unique_effect_%[1]s_state *st = calloc(1, sizeof(struct unique_effect_%[1]s_state));\n", g.Name)
 
 	for i, kind := range g.ArgKinds {
-		if kind.Family == FamilyClock {
-			fmt.Fprintf(w, "  st->r[%d].value = kSingletonClock;\n", i)
-			fmt.Fprintf(w, "  st->r[%d].ready = true;\n", i)
-		} else if kind.Family == FamilyStream {
-			fmt.Fprintf(w, "  st->r[%d].value = kSingletonConsole;\n", i)
-			fmt.Fprintf(w, "  st->r[%d].ready = true;\n", i)
-		} else if kind.Family == FamilyFileSystem {
-			fmt.Fprintf(w, "  st->r[%d].value = kSingletonFileSystem;\n", i)
+		if kind.CanBeArgumentToMain() {
+			fmt.Fprintf(w, "  st->r[%d].value = kSingleton%s;\n", i, kind.Family.String())
 			fmt.Fprintf(w, "  st->r[%d].ready = true;\n", i)
 		} else {
 			return fmt.Errorf("not sure how to synthesize a %s", *kind)
@@ -248,7 +245,7 @@ func (g *generator) FormatMainInto(w io.Writer) error {
 	}
 
 	for i, kind := range g.ReturnKind {
-		if kind.Family == FamilyClock || kind.Family == FamilyStream || kind.Family == FamilyFileSystem {
+		if kind.CanBeReturnedFromMain() {
 			fmt.Fprintf(w, "  future_t dropped_result_%d;\n", i)
 			fmt.Fprintf(w, "  st->result[%[1]d] = &dropped_result_%[1]d;\n", i)
 		} else {
@@ -290,8 +287,23 @@ func (g *generator) MaybeMakeTuple(registers []register) register {
 		for _, reg := range registers {
 			types = append(types, g.Registers[reg])
 		}
-		result := g.NewReg(&Kind{false, FamilyTuple, types}, true)
+		result := g.NewReg(&Kind{false, FamilyTuple, types, "Tuple"}, true)
 		g.Stmt(&genMakeTuple{Inputs: registers, Result: result})
 		return result
+	}
+}
+
+func (g *generator) Consume(reg register, position *lexer.Position) {
+	for idx := range g.Registers {
+		if r := register(idx); g.ResolveRegister(r) == reg {
+			g.Registers[r] = nil
+		}
+	}
+
+	for lcl, target := range g.Locals {
+		if g.ResolveRegister(target) == reg {
+			g.ConsumedLocals[lcl] = position
+			delete(g.Locals, lcl)
+		}
 	}
 }

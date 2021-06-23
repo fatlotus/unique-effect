@@ -55,10 +55,16 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 		if union.Family != FamilyUnion {
 			return errors.New("Attempted to do a type switch on a non-union")
 		}
+		unionArgs := union.UnpackAsUnion()
+
+		resolved, err := p.ResolveType(a.TypeAssertKind)
+		if err != nil {
+			return err
+		}
 
 		found := -1
-		for i, option := range union.Args {
-			if option.IsEquivalent(*a.TypeAssertKind) == nil {
+		for i, option := range unionArgs {
+			if option.IsEquivalent(*resolved) == nil {
 				found = i
 				break
 			}
@@ -68,7 +74,7 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 			return errors.New("Attempted to type switch on impossible type")
 		}
 
-		result := b.NewReg(&Kind{false, FamilyBoolean, nil}, true)
+		result := b.NewReg(p.MustResolveBuiltinType("Boolean"), true)
 		b.Stmt(&genCheckUnionType{condition, found, result})
 
 		condition = result
@@ -80,8 +86,8 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 		}
 	}
 
-	if err := b.Registers[condition].CanConvertTo(Kind{true, FamilyBoolean, nil}); err != nil {
-		return err
+	if !b.Registers[condition].IsBooleanLike() {
+		return fmt.Errorf("expecting boolean argument")
 	}
 
 	parentCondition := b.CurrentCondition
@@ -97,7 +103,12 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 	b.CurrentCondition = trueCondition
 
 	if typeAssertVarName != "" {
-		overwrittenReg := b.NewReg(a.TypeAssertKind, true)
+		resolved, err := p.ResolveType(a.TypeAssertKind)
+		if err != nil {
+			return err
+		}
+
+		overwrittenReg := b.NewReg(resolved, true)
 		b.Stmt(&genExtractUnionValue{unionRegister, overwrittenReg})
 		b.Locals[typeAssertVarName] = overwrittenReg
 	}
@@ -114,10 +125,15 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 	b.CurrentCondition = falseCondition
 
 	// If the union is composed of exactly two values, use the remaining one.
-	if typeAssertVarName != "" && len(unionKind.Args) == 2 {
-		unionTypeArgs := unionKind.Args
+	if typeAssertVarName != "" && len(unionKind.UnpackAsUnion()) == 2 {
+		resolved, err := p.ResolveType(a.TypeAssertKind)
+		if err != nil {
+			return err
+		}
+
+		unionTypeArgs := unionKind.UnpackAsUnion()
 		leftover := unionTypeArgs[0]
-		if unionTypeArgs[0].IsEquivalent(*a.TypeAssertKind) == nil {
+		if unionTypeArgs[0].IsEquivalent(*resolved) == nil {
 			leftover = unionTypeArgs[1]
 		}
 
@@ -177,7 +193,11 @@ func (a *astConditionalStmt) Generate(p *program, b *generator) error {
 }
 
 func (a *astExpressionBase) Captures(out map[string]bool) {
-	if a.Variable != nil {
+	if a.StructArguments != nil {
+		for _, arg := range a.StructArguments {
+			arg.Captures(out)
+		}
+	} else if a.Variable != nil {
 		if *a.Variable != "true" && *a.Variable != "false" {
 			out[*a.Variable] = true
 		}
@@ -193,9 +213,35 @@ func (a *astExpressionBase) Captures(out map[string]bool) {
 }
 
 func (a *astExpressionBase) Generate(p *program, b *generator) ([]register, error) {
-	if a.Variable != nil {
+	if a.StructArguments != nil {
+		kind, err := p.ResolveType(&TypeRep{false, *a.Variable, nil})
+		if err != nil {
+			return nil, err
+		}
+		fields := []register{}
+		expectedKinds := kind.UnpackAsTuple()
+		for i, ast := range a.StructArguments {
+			regs, err := ast.Generate(p, b)
+			if err != nil {
+				return nil, err
+			}
+			if len(regs) != 1 {
+				return nil, errors.New("Cannot use multi-variable value in tuple")
+			}
+			if err := b.Registers[regs[0]].CanConvertTo(*expectedKinds[i]); err != nil {
+				return nil, err
+			}
+			fields = append(fields, regs[0])
+			b.Consume(regs[0], &a.Pos)
+		}
+
+		result := b.NewReg(&Kind{false, FamilyTuple, expectedKinds, *a.Variable}, true)
+		b.Stmt(&genMakeTuple{Inputs: fields, Result: result})
+		return []register{result}, nil
+
+	} else if a.Variable != nil {
 		if *a.Variable == "true" || *a.Variable == "false" {
-			reg := b.NewReg(&Kind{false, FamilyBoolean, nil}, true)
+			reg := b.NewReg(p.MustResolveBuiltinType("Boolean"), true)
 			val := int64(0)
 			if *a.Variable == "true" {
 				val = 1
@@ -207,15 +253,18 @@ func (a *astExpressionBase) Generate(p *program, b *generator) ([]register, erro
 		if v, ok := b.Locals[*a.Variable]; ok {
 			return []register{v}, nil
 		}
-		return nil, fmt.Errorf("Unknown variable \"%s\"", *a.Variable)
+		if pos, ok := b.ConsumedLocals[*a.Variable]; ok {
+			return nil, fmt.Errorf("attempted to read consumed variable \"%s\" (was consumed at %s)", *a.Variable, pos)
+		}
+		return nil, fmt.Errorf("unknown variable \"%s\"", *a.Variable)
 
 	} else if a.String != nil {
-		reg := b.NewReg(&Kind{true, FamilyString, nil}, true)
+		reg := b.NewReg(p.MustResolveBuiltinType("String"), true)
 		b.Stmt(&genStringLiteral{reg, *a.String})
 		return []register{reg}, nil
 
 	} else if a.Integer != nil {
-		reg := b.NewReg(&Kind{false, FamilyInteger, nil}, true)
+		reg := b.NewReg(p.MustResolveBuiltinType("Integer"), true)
 		b.Stmt(&genIntegerLiteral{reg, *a.Integer})
 		return []register{reg}, nil
 
@@ -252,7 +301,7 @@ func (a *astExpressionBase) Generate(p *program, b *generator) ([]register, erro
 			}
 			result = append(result, regs[0])
 		}
-		reg := b.NewReg(&Kind{false, FamilyArray, []*Kind{kind}}, true)
+		reg := b.NewReg(&Kind{false, FamilyArray, []*Kind{kind}, "Array"}, true)
 		b.Stmt(&genNewArray{reg, result})
 		return []register{reg}, nil
 
@@ -297,7 +346,7 @@ func buildMethodCall(p *program, b *generator, calleeName string, args []*astMet
 		return []register{}, fmt.Errorf("no function %s", calleeName)
 	}
 
-	kinds := []Kind{}
+	kinds := []*Kind{}
 	registers := []register{}
 	borrows := []string{}
 
@@ -308,27 +357,17 @@ func buildMethodCall(p *program, b *generator, calleeName string, args []*astMet
 		}
 
 		registers = append(registers, reg)
-		kinds = append(kinds, *b.Registers[reg])
+		kinds = append(kinds, b.Registers[reg])
 		borrows = append(borrows, borrow)
 
 		// Clear out all registers/local variables that were moved into this
 		// function.
 		if !callee.Args[i].Kind.Borrowed {
-			for idx := range b.Registers {
-				if r := register(idx); b.ResolveRegister(r) == reg {
-					b.Registers[r] = nil
-				}
-			}
-
-			for lcl, target := range b.Locals {
-				if b.ResolveRegister(target) == reg {
-					delete(b.Locals, lcl)
-				}
-			}
+			b.Consume(reg, &arg.Pos)
 		}
 	}
 
-	resultKinds, err := callee.ReturnValue(kinds)
+	resultKinds, err := callee.ReturnValue(p, kinds)
 	if err != nil {
 		return []register{}, err
 	}
@@ -379,8 +418,8 @@ func (a *astExpression) Generate(p *program, b *generator) ([]register, error) {
 	if len(lhs) != 1 {
 		return nil, fmt.Errorf("expecting single valued lhs %v", lhs)
 	}
-	if err := b.Registers[lhs[0]].CanConvertTo(Kind{true, FamilyInteger, nil}); err != nil {
-		return nil, err
+	if !b.Registers[lhs[0]].IsNumeric() {
+		return nil, fmt.Errorf("expecting number on LHS")
 	}
 
 	rhs, err := a.Comparison.Operand.Generate(p, b)
@@ -390,11 +429,11 @@ func (a *astExpression) Generate(p *program, b *generator) ([]register, error) {
 	if len(rhs) != 1 {
 		return nil, fmt.Errorf("expecting single valued rhs %v", rhs)
 	}
-	if err := b.Registers[rhs[0]].CanConvertTo(Kind{true, FamilyInteger, nil}); err != nil {
-		return nil, err
+	if !b.Registers[rhs[0]].IsNumeric() {
+		return nil, fmt.Errorf("expecting number on RHS")
 	}
 
-	result := b.NewReg(&Kind{false, FamilyBoolean, nil}, true)
+	result := b.NewReg(p.MustResolveBuiltinType("Boolean"), true)
 	b.Stmt(&genIntegerComparison{Operation: a.Comparison.Cond, Left: lhs[0], Right: rhs[0], Result: result})
 	return []register{result}, nil
 }
@@ -465,7 +504,27 @@ func (a *astLetStmt) Generate(p *program, b *generator) error {
 	}
 
 	if len(a.VarNames) == 1 {
+		// let a = (b, c)
 		regs = []register{b.MaybeMakeTuple(regs)}
+	}
+
+	if len(regs) == 1 && b.Registers[regs[0]].Family == FamilyTuple && len(a.VarNames) > 1 {
+		// let (b, c) = a
+		original := regs[0]
+
+		if b.Registers[original].Borrowed {
+			return fmt.Errorf("cannot unpack unowned tuple")
+		}
+
+		regs = []register{}
+		for _, kind := range b.Registers[original].UnpackAsTuple() {
+			regs = append(regs, b.NewReg(kind, true))
+		}
+		b.Stmt(&genUnpackTuple{
+			Input:   original,
+			Results: regs,
+		})
+		b.Consume(original, &a.Value.Pos)
 	}
 
 	if len(regs) != len(a.VarNames) {
@@ -663,11 +722,25 @@ func (a *astFunction) Generate(p *program) error {
 	argNames := []string{}
 	argKinds := []*Kind{}
 	for _, arg := range a.Args {
+		resolved, err := p.ResolveType(arg.Kind)
+		if err != nil {
+			return err
+		}
+
 		argNames = append(argNames, arg.Name)
-		argKinds = append(argKinds, arg.Kind)
+		argKinds = append(argKinds, resolved)
 	}
 
-	function := newGenerator(a.Name, p, argNames, argKinds, a.ReturnKind)
+	resolvedReturn := []*Kind{}
+	for _, rep := range a.ReturnKind {
+		resolved, err := p.ResolveType(rep)
+		if err != nil {
+			return err
+		}
+		resolvedReturn = append(resolvedReturn, resolved)
+	}
+
+	function := newGenerator(a.Name, p, argNames, argKinds, resolvedReturn)
 	function.IsNative = a.IsNative
 
 	if a.Block != nil {

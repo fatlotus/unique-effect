@@ -23,12 +23,19 @@ import (
 	"github.com/alecthomas/participle/v2/lexer/stateful"
 )
 
+type TypeRep struct {
+	Borrowed bool       `@"&"?`
+	Name     string     `@Ident`
+	Args     []*TypeRep `("[" @@ ("," @@)* "]")?`
+}
+
 type Family int
 
 type Kind struct {
-	Borrowed bool    `@"&"?`
-	Family   Family  `@Ident`
-	Args     []*Kind `("[" @@ ("," @@)* "]")?`
+	Borrowed         bool
+	Family           Family
+	TupleOrUnionArgs []*Kind
+	Label            string
 }
 
 const (
@@ -41,7 +48,7 @@ const (
 	FamilyArray
 	FamilyFileSystem
 	FamilyUnion
-	FamilyError
+	FamilyCustom
 )
 
 func (f Family) String() string {
@@ -64,39 +71,34 @@ func (f Family) String() string {
 		return "FileSystem"
 	case FamilyUnion:
 		return "Union"
-	case FamilyError:
-		return "Error"
+	case FamilyCustom:
+		return "Custom"
 	default:
 		return "?? Unknown"
 	}
 }
 
-var _ = participle.Capture(new(Family))
-
-func (f *Family) Capture(values []string) error {
-	switch values[0] {
+func CaptureFamily(name string) (Family, error) {
+	switch name {
 	case "String":
-		*f = FamilyString
+		return FamilyString, nil
 	case "Stream":
-		*f = FamilyStream
+		return FamilyStream, nil
 	case "Clock":
-		*f = FamilyClock
+		return FamilyClock, nil
 	case "Integer":
-		*f = FamilyInteger
+		return FamilyInteger, nil
 	case "Boolean":
-		*f = FamilyBoolean
+		return FamilyBoolean, nil
 	case "Array":
-		*f = FamilyArray
+		return FamilyArray, nil
 	case "FileSystem":
-		*f = FamilyFileSystem
+		return FamilyFileSystem, nil
 	case "Union":
-		*f = FamilyUnion
-	case "Error":
-		*f = FamilyError
+		return FamilyUnion, nil
 	default:
-		return fmt.Errorf("Unknown type: %s", values[0])
+		return FamilyCustom, nil
 	}
-	return nil
 }
 
 func (k Kind) String() string {
@@ -104,10 +106,10 @@ func (k Kind) String() string {
 	if k.Borrowed {
 		result += "&"
 	}
-	result += k.Family.String()
-	if len(k.Args) > 0 {
+	result += k.Label
+	if len(k.TupleOrUnionArgs) > 0 {
 		result += "["
-		for i, arg := range k.Args {
+		for i, arg := range k.TupleOrUnionArgs {
 			if i > 0 {
 				result += ", "
 			}
@@ -119,8 +121,8 @@ func (k Kind) String() string {
 }
 
 func (k Kind) CanConvertTo(other Kind) error {
-	if k.Family != other.Family {
-		return fmt.Errorf("Type error, expecting %v, got %v", other, k)
+	if k.Family != other.Family || k.Label != other.Label {
+		return fmt.Errorf("Type error, expecting %v, got %s", other, k.String())
 	}
 	if !other.Borrowed && k.Borrowed {
 		return fmt.Errorf("Type error, expecting owned %v, but got %v", other, k)
@@ -129,47 +131,106 @@ func (k Kind) CanConvertTo(other Kind) error {
 }
 
 func (k Kind) IsEquivalent(other Kind) error {
-	if k.Family != other.Family || k.Borrowed != other.Borrowed {
+	if k.Family != other.Family || k.Label != other.Label || k.Borrowed != other.Borrowed {
 		return fmt.Errorf("%v vs. %v", other, k)
 	}
 	return nil
 }
 
+func (k Kind) NeedsToBeDeleted() bool {
+	return !k.IsPrimitive() && !k.Borrowed
+}
+
+func (k Kind) CanBeImplicitlyDeleted() bool {
+	return k.Family == FamilyString || k.Family == FamilyArray
+}
+
+func (k Kind) IsPrimitive() bool {
+	return k.Family == FamilyInteger || k.Family == FamilyBoolean
+}
+
+func (k Kind) IsNumeric() bool {
+	return k.Family == FamilyInteger
+}
+
+func (k Kind) IsBooleanLike() bool {
+	return k.Family == FamilyBoolean
+}
+
+func (k Kind) CanBeArgumentToMain() bool {
+	return k.Family == FamilyClock || k.Family == FamilyStream || k.Family == FamilyFileSystem
+}
+
+func (k Kind) CanBeReturnedFromMain() bool {
+	return k.Family == FamilyClock || k.Family == FamilyStream || k.Family == FamilyFileSystem
+}
+
+func (k Kind) UnpackAsTuple() []*Kind {
+	return append([]*Kind{}, k.TupleOrUnionArgs...)
+}
+
+func (k Kind) UnpackAsUnion() []*Kind {
+	return append([]*Kind{}, k.TupleOrUnionArgs...)
+}
+
 type astHangTen struct {
-	Imports   []*astImport   `EOL* @@*`
-	Functions []*astFunction `     @@*`
+	Imports     []*astImport           `EOL* @@*`
+	Definitions []*astFunctionOrStruct `     @@*`
 }
 
 type astImport struct {
 	ModuleName string `"import" @Ident EOL+`
 }
 
-type astFunction struct {
-	IsSynchronous bool      `@"sync"?`
-	IsNative      bool      `@"native"?`
-	Name          string    `'func' @Ident`
-	Args          []*astArg `'(' @@* (',' @@*)* ')'`
-	ReturnKind    []*Kind   `":" (@@ | "(" @@ ("," @@)* ")")`
-	Block         *astBlock `@@? EOL+`
+type astFunctionOrStruct struct {
+	Function *astFunction `  @@`
+	Struct   *astStruct   `| @@`
 }
 
-func (a *astFunction) ReturnValue(args []Kind) ([]*Kind, error) {
+type astStruct struct {
+	Name   string     `"struct" @Ident`
+	Fields []*TypeRep `"{" (EOL+ (@@ EOL+)+)? "}" EOL+`
+}
+
+type astFunction struct {
+	IsSynchronous bool       `@"sync"?`
+	IsNative      bool       `@"native"?`
+	Name          string     `'func' @Ident`
+	Args          []*astArg  `'(' @@* (',' @@*)* ')'`
+	ReturnKind    []*TypeRep `":" (@@ | "(" @@ ("," @@)* ")")`
+	Block         *astBlock  `@@? EOL+`
+}
+
+func (a *astFunction) ReturnValue(p *program, args []*Kind) ([]*Kind, error) {
 	if len(args) != len(a.Args) {
-		return a.ReturnKind, fmt.Errorf("Type error: argument count mismatch, expecting %d, got %d", len(a.Args), len(args))
+		return nil, fmt.Errorf("Type error: argument count mismatch, expecting %d, got %d", len(a.Args), len(args))
 	}
 
 	for i, arg := range a.Args {
-		if err := args[i].CanConvertTo(*arg.Kind); err != nil {
-			return a.ReturnKind, err
+		resolved, err := p.ResolveType(arg.Kind)
+		if err != nil {
+			return nil, err
+		}
+		if err := args[i].CanConvertTo(*resolved); err != nil {
+			return nil, err
 		}
 	}
 
-	return a.ReturnKind, nil
+	result := []*Kind{}
+	for _, rep := range a.ReturnKind {
+		resolved, err := p.ResolveType(rep)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, resolved)
+	}
+
+	return result, nil
 }
 
 type astArg struct {
-	Name string `@Ident`
-	Kind *Kind  `':' @@`
+	Name string   `@Ident`
+	Kind *TypeRep `':' @@`
 }
 
 type astBlock struct {
@@ -204,7 +265,7 @@ type astRepeatStmt struct {
 
 type astConditionalStmt struct {
 	Cond           *astExpression `"if" @@`
-	TypeAssertKind *Kind          `("is" @@)?`
+	TypeAssertKind *TypeRep       `("is" @@)?`
 	IfTrue         *astBlock      `@@`
 	Otherwise      *astBlock      `"else" @@`
 }
@@ -216,11 +277,15 @@ type astMethodCall struct {
 type astMethodArg struct {
 	Borrow *string        `  "&" @Ident`
 	Expr   *astExpression `| @@`
+
+	Pos lexer.Position
 }
 
 type astExpression struct {
 	Sum        *astExpressionSum `@@`
 	Comparison *astComparison    `@@?`
+
+	Pos lexer.Position
 }
 
 type astComparison struct {
@@ -244,17 +309,92 @@ type astExpressionCall struct {
 }
 
 type astExpressionBase struct {
-	Variable *string          `@Ident`
-	String   *string          `| @String`
-	Tuple    []*astExpression `| "(" @@ ("," @@)+ ")"`
-	Integer  *int64           `| @Int`
-	IsArray  bool             `| @("["`
-	Array    []*astExpression `  (@@ ("," @@)*)? "]")`
+	Variable        *string          `  @Ident`
+	StructArguments []*astExpression `  ("{" @@ ("," @@)+ "}")?`
+	String          *string          `| @String`
+	Tuple           []*astExpression `| "(" @@ ("," @@)+ ")"`
+	Integer         *int64           `| @Int`
+	IsArray         bool             `| @("["`
+	Array           []*astExpression `  (@@ ("," @@)*)? "]")`
+
+	Pos lexer.Position
 }
 
 type program struct {
 	Functions          map[string]*astFunction
 	GeneratedFunctions []*generator
+	Types              map[string][]*TypeRep
+}
+
+func (p *program) MustResolveBuiltinType(label string) *Kind {
+	kind, err := p.ResolveType(&TypeRep{label == "String", label, nil})
+	if err != nil {
+		panic(err)
+	}
+	return kind
+}
+
+func (p *program) ResolveType(t *TypeRep) (*Kind, error) {
+	var (
+		family Family
+		args   []*Kind
+	)
+
+	if t.Name == "Union" || t.Name == "Tuple" || t.Name == "Array" {
+		// Generic type (has type arguments)
+		if t.Name == "Union" {
+			family = FamilyUnion
+		} else if t.Name == "Tuple" {
+			family = FamilyTuple
+		} else if t.Name == "Array" {
+			family = FamilyArray
+		}
+
+		for _, arg := range t.Args {
+			resolved, err := p.ResolveType(arg)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, resolved)
+		}
+
+	} else {
+		// Regular type (with no args)
+		if len(t.Args) > 0 {
+			return nil, fmt.Errorf("type %s doesn't take arguments", t.Name)
+		}
+
+		fields, ok := p.Types[t.Name]
+		if !ok {
+			return nil, fmt.Errorf("unknown type %s", t.Name)
+		}
+
+		// If the type has fields, fill them in as though they were type arguments
+		for _, field := range fields {
+			resolved, err := p.ResolveType(field)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, resolved)
+		}
+
+		if len(fields) > 0 {
+			family = FamilyTuple
+		} else {
+			fam, err := CaptureFamily(t.Name)
+			if err != nil {
+				return nil, err
+			}
+			family = fam
+		}
+	}
+
+	return &Kind{
+		Borrowed:         t.Borrowed,
+		Family:           family,
+		TupleOrUnionArgs: args,
+		Label:            t.Name,
+	}, nil
 }
 
 var ufLexer = stateful.MustSimple([]stateful.Rule{
@@ -273,7 +413,7 @@ var parser = participle.MustBuild(
 	participle.Unquote("String"))
 
 func Parse(main string, sources map[string]string) (map[string]string, error) {
-	program := &program{map[string]*astFunction{}, []*generator{}}
+	program := &program{map[string]*astFunction{}, []*generator{}, map[string][]*TypeRep{}}
 
 	queue := []string{main}
 	nextQueue := []string{}
@@ -295,11 +435,19 @@ func Parse(main string, sources map[string]string) (map[string]string, error) {
 				nextQueue = append(nextQueue, imp.ModuleName)
 			}
 
-			for _, fun := range t.Functions {
-				if _, ok := program.Functions[fun.Name]; ok {
-					return nil, fmt.Errorf("function already exists: %s", fun.Name)
+			for _, defn := range t.Definitions {
+				if fun := defn.Function; fun != nil {
+					if _, ok := program.Functions[fun.Name]; ok {
+						return nil, fmt.Errorf("function already exists: %s", fun.Name)
+					}
+					program.Functions[fun.Name] = fun
+				} else {
+					strct := defn.Struct
+					if _, ok := program.Types[strct.Name]; ok {
+						return nil, fmt.Errorf("type already exists: %s", strct.Name)
+					}
+					program.Types[strct.Name] = strct.Fields
 				}
-				program.Functions[fun.Name] = fun
 			}
 		}
 		queue, nextQueue = nextQueue, queue[:0]

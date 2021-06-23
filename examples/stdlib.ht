@@ -1,3 +1,12 @@
+// No exported fields of any builtin types
+struct Stream {}
+struct Clock {}
+struct String {}
+struct Boolean {}
+struct Integer {}
+struct FileSystem {}
+struct Error {}
+
 // Write the given message to this stream, appending a newline.
 sync native func print(console: Stream, arg: &String): Stream
 

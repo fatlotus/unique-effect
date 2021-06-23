@@ -65,7 +65,7 @@ struct unique_effect_array {
   val_t elements[];
 };
 
-extern val_t kSingletonConsole;
+extern val_t kSingletonStream;
 extern val_t kSingletonClock;
 extern val_t kSingletonFileSystem;
 

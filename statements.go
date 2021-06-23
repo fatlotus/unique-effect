@@ -295,6 +295,26 @@ func (g *genMakeTuple) Deps() ([]register, []register) {
 	return g.Inputs, []register{g.Result}
 }
 
+type genUnpackTuple struct {
+	Input   register
+	Results []register
+}
+
+func (g *genUnpackTuple) Generate(gen *generator) string {
+	b := strings.Builder{}
+	fmt.Fprintf(&b, "    val_t* tuple = (val_t *)%s.value;\n", gen.Reg(g.Input))
+	for i, result := range g.Results {
+		fmt.Fprintf(&b, "    %s.value = tuple[%d];\n", gen.Reg(result), i)
+		fmt.Fprintf(&b, "    %s.ready = true;\n", gen.Reg(result))
+	}
+	fmt.Fprintf(&b, "    free(%s.value);\n", gen.Reg(g.Input))
+	return b.String()
+}
+
+func (g *genUnpackTuple) Deps() ([]register, []register) {
+	return []register{g.Input}, g.Results
+}
+
 type genCheckUnionType struct {
 	Input     register
 	KindIndex int

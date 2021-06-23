@@ -1,0 +1,32 @@
+import stdlib
+
+struct Car {
+    String // engine type
+    Integer // speed in km/h
+}
+
+struct Person {
+    String // given name
+    String // family name
+}
+
+func PrintFullName(stdout: Stream, person: Person): Stream {
+    let given, family = person
+    print(&stdout, "Given name: " + given)
+    print(&stdout, "Family name: " + family)
+    return stdout
+}
+
+func main(stdout: Stream): Stream {
+    print(&stdout, "My name:")
+    let person = Person{copy("Jane"), copy("Smith")}
+    PrintFullName(&stdout, person)
+
+    print(&stdout, "---")
+    print(&stdout, "My car:")
+    let sportscar = Car{copy("Induction Motor"), 350}
+    let engine, speed = sportscar
+    print(&stdout, "Engine: " + engine)
+    print(&stdout, "Speed: " + itoa(speed))
+    return stdout
+}

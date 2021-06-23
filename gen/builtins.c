@@ -28,7 +28,7 @@
 
 #include "builtins.h"
 
-val_t kSingletonConsole = (void *)40;
+val_t kSingletonStream = (void *)40;
 val_t kSingletonClock = (void *)50;
 val_t kSingletonFileSystem = (void *)60;
 val_t kSingletonFileSystemWillFail = (void *)70;
@@ -53,7 +53,7 @@ void unique_effect_runtime_schedule(struct unique_effect_runtime *rt,
 
 void unique_effect_print(struct unique_effect_runtime *rt, val_t console,
                          val_t msg, val_t *console_out) {
-  assert(console == kSingletonConsole);
+  assert(console == kSingletonStream);
   printf("%0.1fs %s\n", rt->current_time, (char *)msg);
   *console_out = console;
 }
@@ -183,7 +183,7 @@ void unique_effect_sleep(struct unique_effect_runtime *rt,
 
 void unique_effect_ReadLine(struct unique_effect_runtime *rt, val_t console,
                             val_t *console_out, val_t *name_out) {
-  assert(console == kSingletonConsole);
+  assert(console == kSingletonStream);
   *name_out = strdup("World");
   *console_out = console;
 }
