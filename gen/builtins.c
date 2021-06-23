@@ -104,7 +104,7 @@ void unique_effect_sleep(struct unique_effect_runtime *rt,
   }
 
   // Wait until the previous timer completes before starting this one.
-  if (!state->r[0].ready) {
+  if (!state->r[0].ready || !state->r[1].ready) {
     return;
   }
 
@@ -112,15 +112,18 @@ void unique_effect_sleep(struct unique_effect_runtime *rt,
   if (state->conditions[0]) {
     return;
   }
+
+  int duration_in_seconds = (uintptr_t)state->r[1].value;
+
   state->conditions[0] = true;
+  state->trigger_time = rt->current_time + duration_in_seconds;
 
 #ifdef USE_LIBUV
   state->timer.data = state;
   state->runtime = rt;
-  state->trigger_time = rt->current_time + 1.0;
 
   uv_timer_init(uv_default_loop(), &state->timer);
-  uv_timer_start(&state->timer, &sleep_adapter_result, 100, 0);
+  uv_timer_start(&state->timer, &sleep_adapter_result, duration_in_seconds * 100, 0);
 #else
   assert(state->r[0].value == kSingletonClock);
   assert(rt->next_timer < 20);
@@ -290,21 +293,33 @@ void unique_effect_runtime_loop(struct unique_effect_runtime *runtime) {
   while (true) {
     finish_current_iteration(runtime);
     if (runtime->next_timer > 0) {
-      bool any = false;
+      double next_trigger_time = -1;
+      // Look for the next timer event.
       for (int i = 0; i < runtime->next_timer; i++) {
-        if (runtime->timers[i] == NULL) {
-          // timer has been cancelled
+        if (runtime->timers[i] != NULL &&
+            (next_trigger_time < 0 ||
+             runtime->timers[i]->trigger_time < next_trigger_time)) {
+          next_trigger_time = runtime->timers[i]->trigger_time;
+        }
+      }
+      for (int i = 0; i < runtime->next_timer; i++) {
+        if (runtime->timers[i] == NULL ||
+            runtime->timers[i]->trigger_time > next_trigger_time) {
+          // timer has been cancelled or hasn't fired yet
           continue;
         }
-        any = true;
         unique_effect_runtime_schedule(runtime, runtime->timers[i]->caller);
         runtime->timers[i]->result[0]->value = kSingletonClock;
         runtime->timers[i]->result[0]->ready = true;
         free(runtime->timers[i]);
+        runtime->timers[i] = NULL;
       }
-      runtime->next_timer = 0;
-      if (any) {
-        runtime->current_time += 1.0;
+      if (next_trigger_time >= 0) {
+        runtime->current_time = next_trigger_time;
+      } else {
+        // There's nothing left to do, so free up all the completed slots
+        // currently in the runtime.
+        runtime->next_timer = 0;
       }
     } else {
       break;

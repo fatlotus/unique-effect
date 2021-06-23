@@ -1,17 +1,17 @@
 import stdlib
 
 func main(clock: Clock): Clock {
-	// Despite nominally sleeping for two seconds, this program will complete
-	// in one second, since we only wait for the first Clock object to
+	// Despite nominally sleeping for five seconds, this program will complete
+	// in four seconds, since we only wait for the second Clock object to
 	// complete.
 	let a, b = fork(clock)
 
-    let c, d = fork(a)
-	sleep(&c)
-	sleep(&c)
+  let c, d = fork(a)
+	sleep(&c, 2)
+	sleep(&c, 3)
 	let a = join(c, d)
 
-	sleep(&b)
+	sleep(&b, 4)
 
 	let first, second = first(a, b)
 	return join(first, second)

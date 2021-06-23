@@ -1,8 +1,8 @@
 import stdlib
 
 func main(clock: Clock, console: Stream): (Clock, Stream) {
-	sleep(&clock) // same as "let clock = sleep(clock)"
-	sleep(&clock)
+	sleep(&clock, 1) // same as "let clock = sleep(clock, 1)"
+	sleep(&clock, 2)
 
 	// Even though the sleep calls appear earlier in the source, the print
 	// will happen while the sleeps are blocked.

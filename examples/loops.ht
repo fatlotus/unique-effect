@@ -31,7 +31,7 @@ func main(clock: Clock, console: Stream): (Clock, Stream) {
 		//    let finishedSleep = sleep(thisIteration)
 		//    let collector = join(collector, finishedSleep)
 		//
-		join(&collector, sleep(fork(&clock)))
+		join(&collector, sleep(fork(&clock), 1))
 
 		set message = "ni! " + message
 		print(&console, "In loop! message=" + message)

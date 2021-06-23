@@ -50,7 +50,7 @@ struct unique_effect_runtime {
 };
 
 struct unique_effect_sleep_state {
-  future_t r[1];
+  future_t r[2];
   future_t *result[1];
   closure_t caller;
 
@@ -58,10 +58,10 @@ struct unique_effect_sleep_state {
   // Needed to get back into the event loop.
   struct unique_effect_runtime *runtime;
   uv_timer_t timer;
-  double trigger_time;
 #else
   struct unique_effect_sleep_state** pending_timer;
 #endif
+  double trigger_time;
 
   bool conditions[1]; // needed for calling convention
 };

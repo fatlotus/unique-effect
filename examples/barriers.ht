@@ -5,8 +5,8 @@ func barrier(clock: Clock, console: Stream): (Clock, Stream) {
 }
 
 func main(clock: Clock, console: Stream): (Clock, Stream) {
-	sleep(&clock)
-	sleep(&clock)
+	sleep(&clock, 1)
+	sleep(&clock, 1)
 	
 	// Unlike hello.ht, the barrier function "entangles" the clock and console
 	// together, enforcing an ordering constraint.

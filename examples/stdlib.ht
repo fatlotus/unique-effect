@@ -10,8 +10,8 @@ struct Error {}
 // Write the given message to this stream, appending a newline.
 sync native func print(console: Stream, arg: &String): Stream
 
-// Wait for 100ms on the given clock.
-native func sleep(clock: Clock): Clock
+// Wait for the specified duration on the given clock.
+native func sleep(clock: Clock, duration: Integer): Clock
 
 // Helpers for test code (eventually these will be deleted once the stdlib is
 // more full featured).
