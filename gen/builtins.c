@@ -92,7 +92,11 @@ void unique_effect_sleep(struct unique_effect_runtime *rt,
 #ifdef USE_LIBUV
     assert(uv_timer_stop(&state->timer) == 0);
 #else
-    *state->pending_timer = NULL;
+    // Allow cancelling timers that haven't even started yet.
+    if (state->pending_timer != NULL) {
+      *state->pending_timer = NULL;
+      state->pending_timer = NULL;
+    }
 #endif
 
     state->result[0]->value = kSingletonClock;

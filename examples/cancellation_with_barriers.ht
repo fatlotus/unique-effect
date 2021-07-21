@@ -1,0 +1,28 @@
+import stdlib
+
+func barrier(clock: Clock, console: Stream): (Clock, Stream) {
+	return (clock, console)
+}
+
+func main(clock: Clock, console: Stream): (Clock, Stream) {
+  // Combine cancellation with barriers to demonstrate that
+  // cancellation does not go through function calls by default.
+  // In this case, the call to print() is not cancelled despite
+  // the second clock finishing first, so we the overall
+  // runtime stays at two seconds.
+	let a, b = fork(clock)
+
+  let c, d = fork(a)
+	sleep(&c, 2)
+
+	barrier(&c, &console)
+	print(&console, "Calls to print() cannot be cancelled.")
+
+	sleep(&c, 3)
+	let a = join(c, d)
+
+	sleep(&b, 1)
+
+	let first, second = first(a, b)
+	return (join(first, second), console)
+}
